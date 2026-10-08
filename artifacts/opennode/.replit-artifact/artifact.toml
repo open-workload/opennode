@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "OpenNode"
+description = "A decentralized workload cluster manager where each OpenNode installation is a peer. Manage peer membership, synchronize cluster state, submit isolated test workloads, and inspect run history and logs."
+version = "1.0.0"
+id = "artifacts/opennode"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20557
+
+[services.development]
+run = "pnpm --filter @workspace/opennode run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/opennode", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/opennode/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20557"
+BASE_PATH = "/"

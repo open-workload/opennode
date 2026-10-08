@@ -3,13 +3,19 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: OpenNode peer-cluster and workload API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: cluster
+    description: Cluster and peer overview
+  - name: membership
+    description: Decentralized membership proposals and voting
+  - name: runs
+    description: Workload preflight, execution, history, and logs
 paths:
   /healthz:
     get:
@@ -24,6 +30,333 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [cluster]
+      summary: Get cluster dashboard summary
+      responses:
+        "200":
+          description: Current local and cluster overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /nodes:
+    get:
+      operationId: listNodes
+      tags: [cluster]
+      summary: List known cluster nodes
+      responses:
+        "200":
+          description: Nodes visible to this peer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Node"
+  /activity:
+    get:
+      operationId: listActivity
+      tags: [cluster]
+      summary: Get recent cluster activity
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Recent activity events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityEvent"
+  /membership/proposals:
+    get:
+      operationId: listMembershipProposals
+      tags: [membership]
+      summary: List membership proposals
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ProposalStatus"
+      responses:
+        "200":
+          description: Membership proposals visible to this peer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MembershipProposal"
+    post:
+      operationId: createMembershipProposal
+      tags: [membership]
+      summary: Propose admission or eviction of a node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MembershipProposalInput"
+      responses:
+        "201":
+          description: Proposal created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipProposal"
+        "400":
+          description: Invalid proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /membership/proposals/{proposalId}/votes:
+    post:
+      operationId: castMembershipVote
+      tags: [membership]
+      summary: Cast a signed membership vote
+      parameters:
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MembershipVoteInput"
+      responses:
+        "200":
+          description: Updated proposal tally
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipProposal"
+        "404":
+          description: Proposal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Proposal is closed or vote is invalid for this epoch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /membership/leave:
+    post:
+      operationId: requestNodeLeave
+      tags: [membership]
+      summary: Request voluntary departure of the local node
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NodeLeaveInput"
+      responses:
+        "202":
+          description: Leave requested; node will drain work and synchronize the event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeLeaveResponse"
+  /runs:
+    get:
+      operationId: listRuns
+      tags: [runs]
+      summary: List workload runs
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/RunStatus"
+      responses:
+        "200":
+          description: Paginated run history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunPage"
+    post:
+      operationId: submitRun
+      tags: [runs]
+      summary: Submit a workload run through this peer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunInput"
+      responses:
+        "202":
+          description: Run accepted or queued for a peer with execution capacity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "400":
+          description: Invalid workload specification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Idempotency key reused with a different workload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Execution unavailable or cluster quorum is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /runs/preflight:
+    post:
+      operationId: preflightRun
+      tags: [runs]
+      summary: Validate workload and current execution readiness without running it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunInput"
+      responses:
+        "200":
+          description: Preflight checks and submission readiness
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunPreflightReport"
+        "400":
+          description: Invalid workload specification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /runs/{runId}:
+    get:
+      operationId: getRun
+      tags: [runs]
+      summary: Get a run and its attempts
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Run detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /runs/logs:
+    get:
+      operationId: getRunLogs
+      tags: [runs]
+      summary: Read ordered logs for a run
+      parameters:
+        - name: runId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Ordered log entries, bounded by server retention and response limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunLogPage"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /runs/{runId}/cancel:
+    post:
+      operationId: cancelRun
+      tags: [runs]
+      summary: Request cancellation of a queued or running workload
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Cancellation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Run is already terminal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -31,6 +364,357 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
-
+      required: [status]
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+      required: [error]
+    NodeStatus:
+      type: string
+      enum: [local, connected, offline, leaving, quarantined]
+    SyncStatus:
+      type: string
+      enum: [synced, syncing, degraded, local_only]
+    ConsensusStatus:
+      type: string
+      enum: [healthy, no_quorum, initializing, local_only]
+    ProposalKind:
+      type: string
+      enum: [admission, eviction]
+    ProposalStatus:
+      type: string
+      enum: [pending, approved, rejected, committed, expired]
+    VoteChoice:
+      type: string
+      enum: [yes, no]
+    RunMode:
+      type: string
+      enum: [diagnostic, container]
+    RunStatus:
+      type: string
+      enum: [queued, starting, running, cancel_requested, succeeded, failed, cancelled, timed_out, infrastructure_error, blocked]
+    NetworkPolicy:
+      type: string
+      enum: [deny_all, allowlist]
+    LogStream:
+      type: string
+      enum: [stdout, stderr, system]
+    Node:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/NodeStatus"
+        role:
+          type: string
+          enum: [validator, worker, observer]
+        protocolVersion:
+          type: string
+        membershipEpoch:
+          type: integer
+        lastSeenAt:
+          type: ["string", "null"]
+          format: date-time
+        address:
+          type: ["string", "null"]
+        canExecute:
+          type: boolean
+        isLocal:
+          type: boolean
+      required: [id, name, status, role, protocolVersion, membershipEpoch, lastSeenAt, address, canExecute, isLocal]
+    ClusterSummary:
+      type: object
+      properties:
+        clusterId:
+          type: string
+        membershipEpoch:
+          type: integer
+        memberCount:
+          type: integer
+        connectedCount:
+          type: integer
+        pendingProposalCount:
+          type: integer
+        syncStatus:
+          $ref: "#/components/schemas/SyncStatus"
+        consensusStatus:
+          $ref: "#/components/schemas/ConsensusStatus"
+        localNodeId:
+          type: string
+      required: [clusterId, membershipEpoch, memberCount, connectedCount, pendingProposalCount, syncStatus, consensusStatus, localNodeId]
+    RunCounts:
+      type: object
+      properties:
+        queued:
+          type: integer
+        running:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+      required: [queued, running, succeeded, failed]
+    DashboardSummary:
+      type: object
+      properties:
+        cluster:
+          $ref: "#/components/schemas/ClusterSummary"
+        runCounts:
+          $ref: "#/components/schemas/RunCounts"
+        recentRuns:
+          type: array
+          items:
+            $ref: "#/components/schemas/Run"
+        recentActivity:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityEvent"
+      required: [cluster, runCounts, recentRuns, recentActivity]
+    ActivityEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [node_joined, node_left, proposal_created, proposal_committed, run_submitted, run_finished, sync_state_changed]
+        message:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        actorNodeId:
+          type: ["string", "null"]
+      required: [id, kind, message, createdAt, actorNodeId]
+    MembershipProposalInput:
+      type: object
+      properties:
+        kind:
+          $ref: "#/components/schemas/ProposalKind"
+        targetNodeId:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+          minLength: 3
+          maxLength: 1000
+      required: [kind, targetNodeId, reason]
+    MembershipProposal:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          $ref: "#/components/schemas/ProposalKind"
+        targetNodeId:
+          type: string
+        targetNodeName:
+          type: ["string", "null"]
+        reason:
+          type: string
+        status:
+          $ref: "#/components/schemas/ProposalStatus"
+        membershipEpoch:
+          type: integer
+        eligibleVoterCount:
+          type: integer
+        requiredYesVotes:
+          type: integer
+        yesVotes:
+          type: integer
+        noVotes:
+          type: integer
+        currentNodeVote:
+          anyOf:
+            - $ref: "#/components/schemas/VoteChoice"
+            - type: "null"
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+      required: [id, kind, targetNodeId, targetNodeName, reason, status, membershipEpoch, eligibleVoterCount, requiredYesVotes, yesVotes, noVotes, currentNodeVote, createdAt, expiresAt]
+    MembershipVoteInput:
+      type: object
+      properties:
+        choice:
+          $ref: "#/components/schemas/VoteChoice"
+      required: [choice]
+    NodeLeaveInput:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 1000
+    NodeLeaveResponse:
+      type: object
+      properties:
+        nodeId:
+          type: string
+        status:
+          type: string
+          enum: [leaving, already_leaving]
+        activeRunsToDrain:
+          type: integer
+      required: [nodeId, status, activeRunsToDrain]
+    ResourceLimits:
+      type: object
+      properties:
+        cpuMilli:
+          type: integer
+          minimum: 100
+          maximum: 16000
+        memoryMiB:
+          type: integer
+          minimum: 64
+          maximum: 65536
+        diskMiB:
+          type: integer
+          minimum: 64
+          maximum: 1048576
+        timeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 86400
+      required: [cpuMilli, memoryMiB, diskMiB, timeoutSeconds]
+    RunInput:
+      type: object
+      properties:
+        clientRequestId:
+          type: string
+          minLength: 8
+          maxLength: 128
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        mode:
+          $ref: "#/components/schemas/RunMode"
+        image:
+          type: ["string", "null"]
+          maxLength: 512
+        command:
+          type: array
+          items:
+            type: string
+            maxLength: 4096
+          maxItems: 128
+        resources:
+          $ref: "#/components/schemas/ResourceLimits"
+        networkPolicy:
+          $ref: "#/components/schemas/NetworkPolicy"
+      required: [clientRequestId, name, mode, image, command, resources, networkPolicy]
+    PreflightCheck:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        status:
+          type: string
+          enum: [pass, warning, blocked]
+        detail:
+          type: string
+      required: [id, label, status, detail]
+    RunPreflightReport:
+      type: object
+      properties:
+        canSubmit:
+          type: boolean
+        executionAvailable:
+          type: boolean
+        executionMode:
+          type: string
+          enum: [built_in_diagnostic, isolated_worker, unavailable]
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreflightCheck"
+      required: [canSubmit, executionAvailable, executionMode, checks]
+    Run:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        mode:
+          $ref: "#/components/schemas/RunMode"
+        image:
+          type: ["string", "null"]
+        imageDigest:
+          type: ["string", "null"]
+        command:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: "#/components/schemas/RunStatus"
+        executionMode:
+          type: string
+          enum: [built_in_diagnostic, isolated_worker, unavailable]
+        submittedBy:
+          type: string
+        submittedViaNodeId:
+          type: string
+        workerNodeId:
+          type: ["string", "null"]
+        attemptCount:
+          type: integer
+        resources:
+          $ref: "#/components/schemas/ResourceLimits"
+        networkPolicy:
+          $ref: "#/components/schemas/NetworkPolicy"
+        failureReason:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, name, mode, image, imageDigest, command, status, executionMode, submittedBy, submittedViaNodeId, workerNodeId, attemptCount, resources, networkPolicy, failureReason, createdAt, updatedAt]
+    RunPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Run"
+        nextCursor:
+          type: ["string", "null"]
+      required: [items, nextCursor]
+    RunLogEntry:
+      type: object
+      properties:
+        sequence:
+          type: integer
+        attempt:
+          type: integer
+        stream:
+          $ref: "#/components/schemas/LogStream"
+        message:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [sequence, attempt, stream, message, createdAt]
+    RunLogPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunLogEntry"
+        nextCursor:
+          type: ["string", "null"]
+      required: [items, nextCursor]
