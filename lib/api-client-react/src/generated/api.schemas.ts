@@ -370,6 +370,124 @@ export interface RunLogPage {
   nextCursor: string | null;
 }
 
+export interface EvictionResponseInput {
+  /**
+     * @minLength 1
+     * @maxLength 1000
+     */
+  response: string;
+}
+
+export type MembershipStatusProposalCounts = {
+  pending: number;
+  approved: number;
+  rejected: number;
+  committed: number;
+  expired: number;
+};
+
+export type MembershipStatusRetentionRules = {
+  proposalTtlMs: number;
+  ballotTtlMs: number;
+};
+
+export interface MembershipStatus {
+  localNodeId: string;
+  clusterId: string;
+  membershipEpoch: number;
+  memberIds: string[];
+  acceptingNewWork: boolean;
+  leftLocalNode: boolean;
+  /** @nullable */
+  quarantinedNodeId: string | null;
+  syncStatus: SyncStatus;
+  proposalCounts: MembershipStatusProposalCounts;
+  retentionRules: MembershipStatusRetentionRules;
+}
+
+export type PeerStatusMetadata = { [key: string]: unknown };
+
+export interface PeerStatus {
+  nodeId: string;
+  clusterId: string;
+  status: NodeStatus;
+  lastSeenAt: string;
+  /** @nullable */
+  lastHeartbeatAt?: string | null;
+  protocolVersion: string;
+  membershipEpoch: number;
+  isLocal: boolean;
+  capabilities: string[];
+  /** @nullable */
+  address: string | null;
+  metadata: PeerStatusMetadata;
+}
+
+export interface ArtifactMetadata {
+  chunkId: string;
+  runId: string;
+  /** @nullable */
+  attemptId: string | null;
+  name: string;
+  size: number;
+}
+
+export interface ArtifactListResponse {
+  items: ArtifactMetadata[];
+  /** @nullable */
+  nextCursor: string | null;
+}
+
+export interface ReconcileRunsInput {
+  now?: number;
+  lostWorkers?: string[];
+  providerOutageWorkers?: string[];
+}
+
+export interface ReconcileRunsResponse {
+  fencedAttemptCount: number;
+  fencedAttempts: string[];
+  appliedSequence: number;
+  runCount: number;
+  attemptCount: number;
+}
+
+export type FeatureFlagsResponseFlags = { [key: string]: unknown };
+
+export interface FeatureFlagsResponse {
+  flags: FeatureFlagsResponseFlags;
+}
+
+export type FeatureFlagsInputFlags = { [key: string]: unknown };
+
+export interface FeatureFlagsInput {
+  flags: FeatureFlagsInputFlags;
+}
+
+export interface KillSwitchActivateInput {
+  /**
+     * @minLength 1
+     * @maxLength 1000
+     */
+  reason: string;
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  activatedBy: string;
+}
+
+export type KillSwitchResponseState = {
+  enabled: boolean;
+  reason: string;
+  activatedAt: string;
+  activatedBy: string;
+};
+
+export interface KillSwitchResponse {
+  state: KillSwitchResponseState;
+}
+
 export type ListActivityParams = {
 /**
  * @minimum 1
@@ -400,5 +518,15 @@ cursor?: string;
  * @maximum 500
  */
 limit?: number;
+};
+
+export type StreamRunLogsParams = {
+runId: string;
+follow?: boolean;
+};
+
+export type ListRunArtifactsParams = {
+runId: string;
+attemptId?: string;
 };
 

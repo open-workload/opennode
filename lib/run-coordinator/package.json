@@ -1,0 +1,19 @@
+{
+  "name": "@workspace/run-coordinator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@workspace/membership-log": "workspace:*",
+    "@workspace/node-store": "workspace:*",
+    "@workspace/opennode-domain": "workspace:*",
+    "@workspace/sync-engine": "workspace:*",
+    "@workspace/feature-flags": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

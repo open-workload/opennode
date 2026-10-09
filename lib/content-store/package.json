@@ -1,0 +1,22 @@
+{
+  "name": "@workspace/content-store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./encryption": "./src/encryption.ts",
+    "./hash": "./src/hash.ts",
+    "./chunk": "./src/chunk.ts",
+    "./stream": "./src/stream.ts",
+    "./pagination": "./src/pagination.ts",
+    "./metadata": "./src/metadata.ts",
+    "./errors": "./src/errors.ts"
+  },
+  "dependencies": {
+    "@workspace/opennode-domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

@@ -13,7 +13,11 @@ export const clusterMetadataTable = pgTable(
     syncStatus: syncStatusEnum("sync_status").notNull(),
     consensusStatus: consensusStatusEnum("consensus_status").notNull(),
   },
-  (table) => [check("cluster_metadata_singleton_true", sql`${table.singleton}`)],
+  (table) => [
+    check("cluster_metadata_singleton_true", sql`${table.singleton}`),
+    check("cluster_metadata_cluster_id_not_empty", sql`length(trim(${table.clusterId})) > 0`),
+    check("cluster_metadata_membership_epoch_nonneg", sql`${table.membershipEpoch} >= 0`),
+  ],
 );
 
 export const insertClusterMetadataSchema = createInsertSchema(clusterMetadataTable);

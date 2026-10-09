@@ -1,0 +1,16 @@
+{
+  "name": "@workspace/node-lifecycle",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@workspace/opennode-domain": "workspace:*",
+    "@workspace/feature-flags": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

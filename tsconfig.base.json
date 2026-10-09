@@ -22,5 +22,6 @@
     "target": "es2022",
     "types": [],
     "customConditions": ["workspace"]
-  }
+  },
+  "exclude": ["**/*.test.ts", "**/*.spec.ts", "**/dist/**", "**/node_modules/**"]
 }

@@ -6,14 +6,30 @@
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
+    "test": "vitest run",
+    "check:ci": "pnpm --filter @workspace/scripts run check:ci",
+    "test:unit": "pnpm -r --filter \"./lib/**\" run test:unit",
+    "coverage": "pnpm -r --filter \"./lib/**\" run coverage"
   },
   "private": true,
   "dependencies": {
-    "@replit/connectors-sdk": "^0.4.3"
+    "@noble/ed25519": "^2.3.0",
+    "@noble/hashes": "^1.8.0",
+    "@replit/connectors-sdk": "^0.4.3",
+    "jose": "^6.2.12"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^5.0.3",
     "prettier": "^3.9.6",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "vitest": "catalog:"
+  },
+  "pnpm": {
+    "overrides": {
+      "@libp2p/interface": "^3.3.0",
+      "@libp2p/interface-peer-id": "^3.0.0",
+      "@libp2p/peer-id": "^5.1.9"
+    }
   }
 }

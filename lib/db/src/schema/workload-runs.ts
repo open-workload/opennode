@@ -1,5 +1,6 @@
 import { createInsertSchema } from "drizzle-zod";
-import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { runExecutionModeEnum, runModeEnum, runStatusEnum } from "./enums";
 
@@ -29,6 +30,7 @@ export const workloadRunsTable = pgTable(
     resources: jsonb("resources").$type<ResourceLimits>().notNull(),
     networkPolicy: text("network_policy", { enum: ["deny_all", "allowlist"] }).notNull(),
     failureReason: text("failure_reason"),
+    requestFingerprint: text("request_fingerprint").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -41,6 +43,11 @@ export const workloadRunsTable = pgTable(
     index("workload_runs_created_idx").on(table.createdAt),
     index("workload_runs_submitted_via_created_idx").on(table.submittedViaNodeId, table.createdAt),
     index("workload_runs_worker_status_idx").on(table.workerNodeId, table.status),
+    check("workload_runs_attempt_count_nonneg", sql`${table.attemptCount} >= 0`),
+    check("workload_runs_name_not_empty", sql`length(trim(${table.name})) > 0`),
+    check("workload_runs_client_request_not_empty", sql`length(trim(${table.clientRequestId})) > 0`),
+    check("workload_runs_submitted_by_not_empty", sql`length(trim(${table.submittedBy})) > 0`),
+    check("workload_runs_submitted_via_not_empty", sql`length(trim(${table.submittedViaNodeId})) > 0`),
   ],
 );
 

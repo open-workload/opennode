@@ -1,0 +1,18 @@
+{
+  "name": "@workspace/secret-broker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./secret-broker": "./src/secret-broker.ts",
+    "./types": "./src/types.ts",
+    "./errors": "./src/errors.ts"
+  },
+  "dependencies": {
+    "@workspace/opennode-domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

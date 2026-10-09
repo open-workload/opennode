@@ -1,5 +1,6 @@
 import { createInsertSchema } from "drizzle-zod";
-import { index, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { check, index, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { proposalKindEnum, proposalStatusEnum } from "./enums";
 
@@ -23,6 +24,13 @@ export const membershipProposalsTable = pgTable(
     index("membership_proposals_status_created_idx").on(table.status, table.createdAt),
     index("membership_proposals_created_idx").on(table.createdAt),
     index("membership_proposals_target_node_idx").on(table.targetNodeId),
+    index("membership_proposals_epoch_idx").on(table.membershipEpoch),
+    check("membership_proposals_reason_not_empty", sql`length(trim(${table.reason})) > 0`),
+    check("membership_proposals_target_not_empty", sql`length(trim(${table.targetNodeId})) > 0`),
+    check("membership_proposals_voter_count_positive", sql`${table.eligibleVoterCount} > 0`),
+    check("membership_proposals_required_yes_positive", sql`${table.requiredYesVotes} > 0`),
+    check("membership_proposals_required_yes_le_voters", sql`${table.requiredYesVotes} <= ${table.eligibleVoterCount}`),
+    check("membership_proposals_expires_after_created", sql`${table.expiresAt} > ${table.createdAt}`),
   ],
 );
 

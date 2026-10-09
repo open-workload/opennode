@@ -1,6 +1,7 @@
 import { createInsertSchema } from "drizzle-zod";
 import {
   boolean,
+  check,
   index,
   integer,
   pgTable,
@@ -38,9 +39,15 @@ export const clusterNodesTable = pgTable(
   (table) => [
     index("cluster_nodes_status_idx").on(table.status),
     index("cluster_nodes_epoch_idx").on(table.membershipEpoch),
+    index("cluster_nodes_public_key_idx").on(table.publicKey),
     uniqueIndex("cluster_nodes_one_local_idx")
       .on(table.isLocal)
       .where(sql`${table.isLocal} = true`),
+    check("cluster_nodes_id_not_empty", sql`length(trim(${table.id})) > 0`),
+    check("cluster_nodes_name_not_empty", sql`length(trim(${table.name})) > 0`),
+    check("cluster_nodes_protocol_version_not_empty", sql`length(trim(${table.protocolVersion})) > 0`),
+    check("cluster_nodes_membership_epoch_nonneg", sql`${table.membershipEpoch} >= 0`),
+    check("cluster_nodes_public_key_not_empty", sql`${table.publicKey} IS NULL OR length(trim(${table.publicKey})) > 0`),
   ],
 );
 

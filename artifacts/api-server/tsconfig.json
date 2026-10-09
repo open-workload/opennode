@@ -5,15 +5,43 @@
     "tsBuildInfoFile": ".tsbuildinfo",
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
     {
       "path": "../../lib/db"
     },
     {
       "path": "../../lib/api-zod"
+    },
+    {
+      "path": "../../lib/node-store"
+    },
+    {
+      "path": "../../lib/opennode-domain"
+    },
+    {
+      "path": "../../lib/observability"
+    },
+    {
+      "path": "../../lib/membership-log"
+    },
+    {
+      "path": "../../lib/sync-engine"
+    },
+    {
+      "path": "../../lib/peernet"
+    },
+    {
+      "path": "../../lib/node-lifecycle"
+    },
+    {
+      "path": "../../lib/run-coordinator"
     }
   ]
 }

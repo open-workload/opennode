@@ -1,0 +1,19 @@
+{
+  "name": "@workspace/worker-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@workspace/db": "workspace:*",
+    "@workspace/node-store": "workspace:*",
+    "@workspace/content-store": "workspace:*",
+    "@workspace/secret-broker": "workspace:*",
+    "@workspace/opennode-domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

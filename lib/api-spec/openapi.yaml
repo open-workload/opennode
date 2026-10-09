@@ -122,6 +122,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /membership/proposals/{proposalId}:
+    get:
+      operationId: getMembershipProposal
+      tags: [membership]
+      summary: Get a membership proposal by ID
+      parameters:
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Membership proposal details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipProposal"
+        "404":
+          description: Proposal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /membership/proposals/{proposalId}/votes:
     post:
       operationId: castMembershipVote
@@ -158,6 +182,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /membership/proposals/{proposalId}/respond:
+    post:
+      operationId: submitEvictionResponse
+      tags: [membership]
+      summary: Submit a response to an eviction proposal
+      parameters:
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EvictionResponseInput"
+      responses:
+        "200":
+          description: Response recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipProposal"
+        "400":
+          description: Invalid response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Proposal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Proposal is not an eviction or already has a response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /membership/leave:
     post:
       operationId: requestNodeLeave
@@ -176,6 +242,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NodeLeaveResponse"
+  /membership/status:
+    get:
+      operationId: getMembershipStatus
+      tags: [membership]
+      summary: Get current membership status
+      responses:
+        "200":
+          description: Current membership status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipStatus"
+  /peer-status:
+    get:
+      operationId: listPeerStatus
+      tags: [cluster]
+      summary: List peer statuses
+      responses:
+        "200":
+          description: Peer statuses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PeerStatus"
   /runs:
     get:
       operationId: listRuns
@@ -353,6 +445,215 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Run is already terminal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /runs/logs/stream:
+    get:
+      operationId: streamRunLogs
+      tags: [runs]
+      summary: Stream run logs via Server-Sent Events
+      parameters:
+        - name: runId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: follow
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: Server-Sent Events stream of log entries
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /runs/artifacts:
+    get:
+      operationId: listRunArtifacts
+      tags: [runs]
+      summary: List artifacts for a run
+      parameters:
+        - name: runId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: attemptId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of artifacts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtifactListResponse"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /runs/artifacts/{chunkId}:
+    get:
+      operationId: getRunArtifact
+      tags: [runs]
+      summary: Download a run artifact
+      parameters:
+        - name: chunkId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Artifact content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /runs/{runId}/retry:
+    post:
+      operationId: retryRun
+      tags: [runs]
+      summary: Retry a failed or cancelled run
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Retry accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Run cannot be retried
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /runs/reconcile:
+    post:
+      operationId: reconcileRuns
+      tags: [runs]
+      summary: Reconcile run state with execution providers
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReconcileRunsInput"
+      responses:
+        "200":
+          description: Reconciliation summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconcileRunsResponse"
+  /flags:
+    get:
+      operationId: getFeatureFlags
+      tags: [flags]
+      summary: Get all feature flags
+      responses:
+        "200":
+          description: Current feature flag values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeatureFlagsResponse"
+    post:
+      operationId: updateFeatureFlags
+      tags: [flags]
+      summary: Update feature flag overrides
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeatureFlagsInput"
+      responses:
+        "200":
+          description: Updated feature flags
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeatureFlagsResponse"
+        "400":
+          description: Invalid flag overrides
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /flags/kill-switch/activate:
+    post:
+      operationId: activateKillSwitch
+      tags: [flags]
+      summary: Activate the kill switch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KillSwitchActivateInput"
+      responses:
+        "200":
+          description: Kill switch activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KillSwitchResponse"
+        "409":
+          description: Kill switch already active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /flags/kill-switch/deactivate:
+    post:
+      operationId: deactivateKillSwitch
+      tags: [flags]
+      summary: Deactivate the kill switch
+      responses:
+        "200":
+          description: Kill switch deactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KillSwitchResponse"
+        "409":
+          description: Kill switch not active
           content:
             application/json:
               schema:
@@ -718,3 +1019,181 @@ components:
         nextCursor:
           type: ["string", "null"]
       required: [items, nextCursor]
+    EvictionResponseInput:
+      type: object
+      properties:
+        response:
+          type: string
+          minLength: 1
+          maxLength: 1000
+      required: [response]
+    MembershipStatus:
+      type: object
+      properties:
+        localNodeId:
+          type: string
+        clusterId:
+          type: string
+        membershipEpoch:
+          type: integer
+        memberIds:
+          type: array
+          items:
+            type: string
+        acceptingNewWork:
+          type: boolean
+        leftLocalNode:
+          type: boolean
+        quarantinedNodeId:
+          type: ["string", "null"]
+        syncStatus:
+          $ref: "#/components/schemas/SyncStatus"
+        proposalCounts:
+          type: object
+          properties:
+            pending:
+              type: integer
+            approved:
+              type: integer
+            rejected:
+              type: integer
+            committed:
+              type: integer
+            expired:
+              type: integer
+          required: [pending, approved, rejected, committed, expired]
+        retentionRules:
+          type: object
+          properties:
+            proposalTtlMs:
+              type: integer
+            ballotTtlMs:
+              type: integer
+          required: [proposalTtlMs, ballotTtlMs]
+      required: [localNodeId, clusterId, membershipEpoch, memberIds, acceptingNewWork, leftLocalNode, quarantinedNodeId, syncStatus, proposalCounts, retentionRules]
+    PeerStatus:
+      type: object
+      properties:
+        nodeId:
+          type: string
+        clusterId:
+          type: string
+        status:
+          $ref: "#/components/schemas/NodeStatus"
+        lastSeenAt:
+          type: string
+          format: date-time
+        lastHeartbeatAt:
+          type: ["string", "null"]
+          format: date-time
+        protocolVersion:
+          type: string
+        membershipEpoch:
+          type: integer
+        isLocal:
+          type: boolean
+        capabilities:
+          type: array
+          items:
+            type: string
+        address:
+          type: ["string", "null"]
+        metadata:
+          type: object
+      required: [nodeId, clusterId, status, lastSeenAt, protocolVersion, membershipEpoch, isLocal, capabilities, address, metadata]
+    ArtifactMetadata:
+      type: object
+      properties:
+        chunkId:
+          type: string
+        runId:
+          type: string
+        attemptId:
+          type: ["string", "null"]
+        name:
+          type: string
+        size:
+          type: integer
+      required: [chunkId, runId, attemptId, name, size]
+    ArtifactListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArtifactMetadata"
+        nextCursor:
+          type: ["string", "null"]
+      required: [items, nextCursor]
+    ReconcileRunsInput:
+      type: object
+      properties:
+        now:
+          type: integer
+        lostWorkers:
+          type: array
+          items:
+            type: string
+        providerOutageWorkers:
+          type: array
+          items:
+            type: string
+    ReconcileRunsResponse:
+      type: object
+      properties:
+        fencedAttemptCount:
+          type: integer
+        fencedAttempts:
+          type: array
+          items:
+            type: string
+        appliedSequence:
+          type: integer
+        runCount:
+          type: integer
+        attemptCount:
+          type: integer
+      required: [fencedAttemptCount, fencedAttempts, appliedSequence, runCount, attemptCount]
+    FeatureFlagsResponse:
+      type: object
+      properties:
+        flags:
+          type: object
+          additionalProperties: true
+      required: [flags]
+    FeatureFlagsInput:
+      type: object
+      properties:
+        flags:
+          type: object
+          additionalProperties: true
+      required: [flags]
+    KillSwitchActivateInput:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        activatedBy:
+          type: string
+          minLength: 1
+          maxLength: 128
+      required: [reason, activatedBy]
+    KillSwitchResponse:
+      type: object
+      properties:
+        state:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            reason:
+              type: string
+            activatedAt:
+              type: string
+              format: date-time
+            activatedBy:
+              type: string
+          required: [enabled, reason, activatedAt, activatedBy]
+      required: [state]

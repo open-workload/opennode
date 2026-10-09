@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ClerkProvider, Show, SignIn, SignUp, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
@@ -18,7 +18,7 @@ import {
   useListMembershipProposals, useListNodes, useListRuns, usePreflightRun,
   useRequestNodeLeave, useSubmitRun,
 } from '@workspace/api-client-react';
-import type { NetworkPolicy, ProposalKind, RunInput, RunMode, RunStatus } from '@workspace/api-client-react';
+import type { NetworkPolicy, ProposalKind, Run, RunInput, RunMode, RunStatus } from '@workspace/api-client-react';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
@@ -129,7 +129,7 @@ function AppShell({ children, current }: { children: React.ReactNode; current: s
   return <div className="app-shell">
     <aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}><div className="sidebar-brand"><Brand inverse /><button className="icon-button close-mobile" onClick={() => setMobileOpen(false)} aria-label="Close navigation" data-testid="button-close-menu"><X size={18} /></button></div>
       <div className="workspace-label">OPERATOR WORKSPACE</div><div className="cluster-mini"><span className="cluster-glyph"><Network size={17} /></span><span><b>Current cluster</b><small>Local context</small></span><ChevronRight size={14} /></div>
-      <div className="side-label">OPERATE</div><nav className="side-nav" aria-label="Operator navigation">{paths.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`side-link ${active === href || (href === '/runs' && active.startsWith('/runs/')) ? 'active' : ''}`} data-testid={`nav-${href.slice(1)}`}><Icon size={17} /><span>{label}</span>{href === '/membership' ? <span className="nav-count">•</span> : null}</Link>)}</nav>
+      <div className="side-label">OPERATE</div><nav className="side-nav" aria-label="Operator navigation">{paths.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`side-link ${active === href || (href === '/runs' && active.startsWith('/runs/')) || (href === '/membership' && active.startsWith('/membership/')) ? 'active' : ''}`} data-testid={`nav-${href.slice(1)}`}><Icon size={17} /><span>{label}</span>{href === '/membership' ? <span className="nav-count">•</span> : null}</Link>)}</nav>
       <div className="sidebar-spacer" /><div className="side-health"><span className="health-led online" /><span>API-connected view</span><CircleHelp size={15} /></div>
       <div className="account-box"><div className="avatar">{(user?.firstName || user?.primaryEmailAddress?.emailAddress || 'OP').slice(0, 2).toUpperCase()}</div><div className="account-copy"><b>{user?.fullName || 'Operator'}</b><small>{user?.primaryEmailAddress?.emailAddress || 'Signed in'}</small></div><button className="icon-button" aria-label="Sign out" title="Sign out" onClick={() => signOut({ redirectUrl: basePath || '/' })} data-testid="button-sign-out"><LogOut size={16} /></button></div>
     </aside>
@@ -225,7 +225,7 @@ function MembershipPage() {
     if (window.confirm('Request voluntary leave for this local node? This creates a cluster membership action.')) leave.mutate({ data: { reason: 'Voluntary operator request' } }, { onSuccess: (result) => { setFeedback(`Leave request: ${titleCase(result.status)}. Active runs to drain: ${result.activeRunsToDrain}.`); invalidate(); }, onError: (e) => setFeedback(e instanceof Error ? e.message : 'Leave request failed.') });
   };
   return <AppShell current="/membership"><PageFrame title="Membership" kicker="ADMISSION / GOVERNANCE" subtitle="Proposals move through an explicit vote threshold. The API is the authority on status." action={<button className="button button-outline button-danger" onClick={requestLeave} disabled={leave.isPending || summary.data?.cluster.localNodeId == null} data-testid="button-request-leave">{leave.isPending ? <LoaderCircle className="spin" size={16} /> : <ArrowDownRight size={16} />} Request local node leave</button>}>
-    {summary.data?.cluster && <div className="context-strip"><span><span className="tiny-label">MEMBERSHIP EPOCH</span><b>{summary.data.cluster.membershipEpoch}</b></span><span><span className="tiny-label">MEMBERS</span><b>{summary.data.cluster.memberCount}</b></span><span><span className="tiny-label">CONNECTED</span><b>{summary.data.cluster.connectedCount}</b></span><span><span className="tiny-label">CONSENSUS</span><b>{titleCase(summary.data.cluster.consensusStatus)}</b></span></div>}
+    {summary.data?.cluster && <div className="context-strip"><span><span className="tiny-label">MEMBERSHIP EPOCH</span><b>{summary.data.cluster.membershipEpoch}</b></span><span><span className="tiny-label">MEMBERS</span><b>{summary.data.cluster.memberCount}</b></span><span><span className="tiny-label">CONNECTED</span><b>{summary.data.cluster.connectedCount}</b></span><span><span className="tiny-label">CONSENSUS</span><b>{titleCase(summary.data.cluster.consensusStatus)}</b></span><span><span className="tiny-label">SYNC</span><b>{titleCase(summary.data.cluster.syncStatus)}</b></span></div>}
     {summary.data?.cluster.consensusStatus === 'no_quorum' && <Notice kind="warning">No quorum reported. Threshold progress is informational; the API may not commit a proposal until quorum returns.</Notice>}
     {feedback && <div className="form-feedback" role="status" data-testid="status-membership-feedback">{feedback}</div>}
     <div className="membership-layout"><section className="panel proposal-form"><PanelHead title="Propose a change" meta="OPERATOR ACTION" /><form onSubmit={submitProposal}>
@@ -239,9 +239,67 @@ function MembershipPage() {
         <div className="proposal-stack">{proposals.data?.map((p) => {
           const progress = p.requiredYesVotes > 0 ? Math.min(100, (p.yesVotes / p.requiredYesVotes) * 100) : 0;
           const canVote = p.status === 'pending' && !p.currentNodeVote;
-          return <article className="proposal-card" key={p.id} data-testid={`card-proposal-${p.id}`}><div className="proposal-top"><span className={`proposal-kind kind-${p.kind}`}>{titleCase(p.kind)}</span><span className={statusClass(p.status)}>{titleCase(p.status)}</span></div><h3>{p.targetNodeName || p.targetNodeId}</h3><p>{p.reason}</p><div className="threshold-head"><span>YES THRESHOLD</span><b>{p.yesVotes} <i>/</i> {p.requiredYesVotes}</b></div><div className="threshold-track" role="progressbar" aria-label={`${p.yesVotes} of ${p.requiredYesVotes} yes votes`} aria-valuenow={p.yesVotes} aria-valuemin={0} aria-valuemax={p.requiredYesVotes}><span style={{ width: `${progress}%` }} /></div><div className="vote-stats"><span>{p.eligibleVoterCount} eligible voters</span><span>{p.noVotes} no</span><span>Epoch {p.membershipEpoch}</span></div><div className="proposal-foot"><span>{p.currentNodeVote ? `Your vote: ${titleCase(p.currentNodeVote)}` : `Expires ${date(p.expiresAt)}`}</span>{canVote && <div className="vote-actions"><button className="button button-vote" disabled={vote.isPending} onClick={() => castVote(p.id, 'yes')} data-testid={`button-vote-yes-${p.id}`}><Check size={14} /> Yes</button><button className="button button-vote button-vote-no" disabled={vote.isPending} onClick={() => castVote(p.id, 'no')} data-testid={`button-vote-no-${p.id}`}>No</button></div>}</div></article>;
+          return <article className="proposal-card" key={p.id} data-testid={`card-proposal-${p.id}`}><div className="proposal-top"><span className={`proposal-kind kind-${p.kind}`}>{titleCase(p.kind)}</span><span className={statusClass(p.status)}>{titleCase(p.status)}</span></div><h3>{p.targetNodeName || p.targetNodeId}</h3><p>{p.reason}</p><div className="threshold-head"><span>YES THRESHOLD</span><b>{p.yesVotes} <i>/</i> {p.requiredYesVotes}</b></div><div className="threshold-track" role="progressbar" aria-label={`${p.yesVotes} of ${p.requiredYesVotes} yes votes`} aria-valuenow={p.yesVotes} aria-valuemin={0} aria-valuemax={p.requiredYesVotes}><span style={{ width: `${progress}%` }} /></div><div className="vote-stats"><span>{p.eligibleVoterCount} eligible voters</span><span>{p.noVotes} no</span><span>Epoch {p.membershipEpoch}</span></div><div className="proposal-foot"><span>{p.currentNodeVote ? `Your vote: ${titleCase(p.currentNodeVote)}` : `Expires ${date(p.expiresAt)}`}</span><Link href={`/membership/${p.id}`} className="panel-link" data-testid={`link-proposal-${p.id}`}>Details <ArrowUpRight size={14} /></Link>{canVote && <div className="vote-actions"><button className="button button-vote" disabled={vote.isPending} onClick={() => castVote(p.id, 'yes')} data-testid={`button-vote-yes-${p.id}`}><Check size={14} /> Yes</button><button className="button button-vote button-vote-no" disabled={vote.isPending} onClick={() => castVote(p.id, 'no')} data-testid={`button-vote-no-${p.id}`}>No</button></div>}</div></article>;
         })}</div></QueryState>
       </section></div>
+  </PageFrame></AppShell>;
+}
+
+function ProposalDetailPage() {
+  const params = useParams<{ proposalId: string }>();
+  const id = params.proposalId || '';
+  const proposalsQ = useListMembershipProposals();
+  const summaryQ = useGetDashboardSummary();
+  const queryClient = useQueryClient();
+  const vote = useCastMembershipVote();
+  const [feedback, setFeedback] = useState('');
+  const proposal = proposalsQ.data?.find((p) => p.id === id);
+  const cluster = summaryQ.data?.cluster;
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: getListMembershipProposalsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+  };
+  const castVote = (choice: 'yes' | 'no') => vote.mutate({ proposalId: id, data: { choice } }, { onSuccess: () => { setFeedback(`Vote recorded: ${choice}.`); invalidate(); proposalsQ.refetch(); }, onError: (e) => setFeedback(e instanceof Error ? e.message : 'Vote could not be recorded.') });
+  const canVote = !!proposal && proposal.status === 'pending' && !proposal.currentNodeVote;
+  const expiresAtMs = proposal ? new Date(proposal.expiresAt).getTime() : 0;
+  const expiresInFuture = proposal ? expiresAtMs - Date.now() > 0 : false;
+  const thresholdMath = proposal
+    ? (proposal.kind === 'admission'
+      ? `Admission: 1 yes vote when the frozen electorate N = 1, otherwise max(2, ceil(0.20 x N)). Here N = ${proposal.eligibleVoterCount}, so the required yes votes are ${proposal.requiredYesVotes}.`
+      : `Eviction: ceil(0.50 x N) yes votes from members other than the target. Here N = ${proposal.eligibleVoterCount}, so the required yes votes are ${proposal.requiredYesVotes}.`)
+    : '';
+  return <AppShell current="/membership"><PageFrame title={proposal ? `${titleCase(proposal.kind)} proposal` : 'Proposal'} kicker="GOVERNANCE / DECISION STATE" subtitle="Frozen electorate, threshold math, and the current decision state for this proposal." action={<Link href="/membership" className="button button-outline" data-testid="link-back-membership"><ArrowRight size={15} /> All proposals</Link>}>
+    <QueryState loading={proposalsQ.isLoading} error={proposalsQ.isError} retry={() => proposalsQ.refetch()} empty={!proposal} emptyTitle="Proposal not reported by the API">
+      {proposal && cluster && <>
+        <div className="context-strip"><span><span className="tiny-label">SYNC</span><b>{titleCase(cluster.syncStatus)}</b></span><span><span className="tiny-label">CONSENSUS</span><b>{titleCase(cluster.consensusStatus)}</b></span><span><span className="tiny-label">EPOCH</span><b>{proposal.membershipEpoch}</b></span><span><span className="tiny-label">CLUSTER ID</span><b className="mono">{cluster.clusterId}</b></span></div>
+        {cluster.syncStatus !== 'synced' && <Notice kind="warning">Sync state is {titleCase(cluster.syncStatus)}. Vote counts and decision state shown here are reported by this node and may lag the committed cluster record.</Notice>}
+        {feedback && <div className="form-feedback" role="status" data-testid="status-proposal-feedback">{feedback}</div>}
+        <div className="detail-metrics">
+          <Metric label="Frozen denominator" value={proposal.eligibleVoterCount} note="Eligible voters at proposal open" icon={GitBranch} />
+          <Metric label="Required yes votes" value={proposal.requiredYesVotes} note="Threshold from governance rule" icon={Check} />
+          <Metric label="Received yes votes" value={proposal.yesVotes} note={`${proposal.noVotes} no votes recorded`} icon={Activity} />
+          <Metric label="Decision state" value={titleCase(proposal.status)} note={proposal.status === 'committed' ? 'Committed by consensus' : 'Awaiting final commit'} icon={Clock3} />
+        </div>
+        <div className="detail-grid">
+          <section className="panel"><PanelHead title="Proposal record" meta={proposal.id} /><div className="spec-list">
+            <Spec label="Kind" value={titleCase(proposal.kind)} />
+            <Spec label="Target" value={proposal.targetNodeName || proposal.targetNodeId} mono />
+            <Spec label="Reason" value={proposal.reason} />
+            <Spec label="Frozen denominator" value={`N = ${proposal.eligibleVoterCount} eligible voters`} />
+            <Spec label="Threshold math" value={thresholdMath} />
+            <Spec label="Required / received" value={`${proposal.requiredYesVotes} required · ${proposal.yesVotes} yes · ${proposal.noVotes} no`} />
+            <Spec label="Expiry" value={`${date(proposal.expiresAt)}${expiresInFuture ? ' (still open)' : ' (expired)'}`} />
+            <Spec label="Decision state" value={titleCase(proposal.status)} />
+            <Spec label="Sync status" value={titleCase(cluster.syncStatus)} />
+          </div></section>
+          <section className="panel"><PanelHead title="Cast your vote" meta="SIGNED BALLOT" />
+            <p>{proposal.currentNodeVote ? `Your last recorded ballot: ${titleCase(proposal.currentNodeVote)}.` : 'No ballot recorded from this node yet.'}</p>
+            {canVote && <div className="vote-actions"><button className="button button-vote" disabled={vote.isPending} onClick={() => castVote('yes')} data-testid="button-vote-yes-detail"><Check size={14} /> Yes</button><button className="button button-vote button-vote-no" disabled={vote.isPending} onClick={() => castVote('no')} data-testid="button-vote-no-detail">No</button></div>}
+            {proposal.status !== 'pending' && <div className="inline-empty">Voting is closed because the proposal is {titleCase(proposal.status)}.</div>}
+          </section>
+        </div>
+      </>}
+    </QueryState>
   </PageFrame></AppShell>;
 }
 
@@ -260,6 +318,7 @@ function RunsPage() {
 
 function NewRunPage() {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const preflight = usePreflightRun();
   const submit = useSubmitRun();
   const [name, setName] = useState('Connectivity diagnostic');
@@ -272,6 +331,7 @@ function NewRunPage() {
   const [timeoutSeconds, setTimeout] = useState('60');
   const [networkPolicy, setNetwork] = useState<NetworkPolicy>('deny_all');
   const [submitMessage, setSubmitMessage] = useState('');
+  const [submitError, setSubmitError] = useState<{ message: string; code?: string; payload: RunInput } | null>(null);
   const data = useMemo<RunInput>(() => ({
     clientRequestId: globalThis.crypto?.randomUUID?.() || `opn-${Date.now()}-request`,
     name: name.trim(), mode, image: mode === 'container' ? (image.trim() || null) : null,
@@ -280,11 +340,17 @@ function NewRunPage() {
     networkPolicy,
   }), [name, mode, image, command, cpuMilli, memoryMiB, diskMiB, timeoutSeconds, networkPolicy]);
   const report = preflight.data;
+  useEffect(() => { preflight.reset(); }, [data]);
   const valid = name.trim().length > 0 && data.command.length > 0 && Object.values(data.resources).every((n) => Number.isFinite(n) && n > 0) && (mode !== 'container' || !!image.trim());
   const runPreflight = (e: React.FormEvent) => { e.preventDefault(); preflight.mutate({ data }, { onSuccess: () => setSubmitMessage(''), onError: (err) => setSubmitMessage(err instanceof Error ? err.message : 'Preflight request failed.') }); };
   const submitRun = () => {
     setSubmitMessage('');
-    submit.mutate({ data }, { onSuccess: (run) => setLocation(`/runs/${run.id}`), onError: (err) => setSubmitMessage(err instanceof Error ? err.message : 'Run could not be submitted.') });
+    submit.mutate({ data }, { onSuccess: (run) => { queryClient.invalidateQueries({ queryKey: getListRunsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }); setSubmitError(null); setLocation(`/runs/${run.id}`); }, onError: (err) => { const message = err instanceof Error ? err.message : 'Run could not be submitted.'; setSubmitMessage(''); setSubmitError({ message, code: (err as { data?: { code?: string } | null })?.data?.code, payload: data }); } });
+  };
+  const resendPayload = () => {
+    if (!submitError) return;
+    const payload = submitError.payload;
+    submit.mutate({ data: payload }, { onSuccess: (run) => { queryClient.invalidateQueries({ queryKey: getListRunsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }); setSubmitError(null); setLocation(`/runs/${run.id}`); }, onError: (err) => { const message = err instanceof Error ? err.message : 'Run could not be submitted.'; setSubmitError({ message, code: (err as { data?: { code?: string } | null })?.data?.code, payload }); } });
   };
   const hardBlocked = report && (report.canSubmit !== true || report.executionAvailable !== true || report.executionMode === 'unavailable' || report.checks.some((c) => c.status === 'blocked'));
   return <AppShell current="/runs"><PageFrame title="Submit a test run" kicker="RUN PREFLIGHT / SUBMISSION" subtitle="Check the current execution path first. Submission readiness and execution availability come from the API." action={<Link className="text-link" href="/runs"><ArrowRight size={15} /> Back to run history</Link>}>
@@ -302,6 +368,18 @@ function NewRunPage() {
       <button className="button button-primary full-button" type="submit" disabled={!valid || preflight.isPending} data-testid="button-run-preflight">{preflight.isPending ? <LoaderCircle className="spin" size={16} /> : <Shield size={16} />} Run preflight</button>
       {preflight.isError && <div className="form-error" role="alert">Preflight request failed. The run is not ready to submit. Retry after reviewing the cluster connection.</div>}
       {submitMessage && <div className="form-error" role="alert" data-testid="status-run-submit-error">{submitMessage}</div>}
+      {submitError && <div className="form-error" role="alert" data-testid="status-run-submit-error-detail">
+        <b>{submitError.code ? `${submitError.code}: ` : ''}{submitError.message}</b>
+        <div className="spec-list">
+          <Spec label="Name" value={submitError.payload.name} />
+          <Spec label="Mode" value={titleCase(submitError.payload.mode)} />
+          <Spec label="Image" value={submitError.payload.image || 'Not applicable'} mono />
+          <Spec label="Network policy" value={titleCase(submitError.payload.networkPolicy)} />
+          <Spec label="Quota fields" value={`${submitError.payload.resources.cpuMilli}m CPU · ${submitError.payload.resources.memoryMiB} MiB memory · ${submitError.payload.resources.diskMiB} MiB disk · ${submitError.payload.resources.timeoutSeconds}s timeout`} />
+          <Spec label="Command" value={submitError.payload.command.join(' ') || 'None'} mono />
+        </div>
+        <button type="button" className="button button-outline" onClick={resendPayload} disabled={submit.isPending} data-testid="button-resend-run-payload">{submit.isPending ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />} Resend payload</button>
+      </div>}
     </form>
       <aside className="preflight-column"><section className="panel preflight-panel"><PanelHead title="Readiness report" meta="API PREFLIGHT" />
         {!report && <div className="preflight-empty"><div className="preflight-empty-icon"><Shield size={21} /></div><b>Check before you submit</b><p>The report will show whether submission is allowed and which execution mode the cluster returned.</p></div>}
@@ -326,27 +404,115 @@ function RunDetailPage() {
   const logsQ = useGetRunLogs(logParams, { query: { queryKey: getGetRunLogsQueryKey(logParams), enabled: !!id, refetchInterval: runQ.data && ['queued', 'starting', 'running', 'cancel_requested'].includes(runQ.data.status) ? 5000 : false } });
   const cancel = useCancelRun();
   const [cancelMsg, setCancelMsg] = useState('');
+  const [runMsg, setRunMsg] = useState('');
+  const [followLogs, setFollowLogs] = useState(false);
+  const [followCursor, setFollowCursor] = useState<string | null>(null);
+  const [liveLogs, setLiveLogs] = useState<Array<{ sequence: number; attempt: number; stream: string; message: string; timestamp: number }>>([]);
+  const retryRun = useMutation({
+    mutationFn: async (): Promise<Run> => {
+      const res = await fetch(`/api/runs/${encodeURIComponent(id)}/retry`, { method: 'POST', headers: { accept: 'application/json' } });
+      const body = (await res.json().catch(() => null)) as (Run & { error?: string }) | null;
+      if (!res.ok) throw new Error(body?.error || `Retry request failed with HTTP ${res.status}`);
+      return body as Run;
+    },
+    onSuccess: (updated) => { queryClient.setQueryData(getGetRunQueryKey(id), updated); queryClient.invalidateQueries({ queryKey: getListRunsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }); setRunMsg('Retry request accepted by the API.'); },
+    onError: (e) => setRunMsg(e instanceof Error ? e.message : 'Retry request failed.'),
+  });
+  const retry = () => retryRun.mutate();
   const run = runQ.data;
   const canCancel = !!run && ['queued', 'starting', 'running'].includes(run.status);
+  const canRetry = !!run && ['failed', 'cancelled', 'timed_out'].includes(run.status);
+  const attempts = (run as (Run & { attempts?: RunAttempt[] }) | undefined)?.attempts;
   const doCancel = () => {
     if (!window.confirm('Request cancellation for this run? The request may not stop work immediately.')) return;
-    cancel.mutate({ runId: id }, { onSuccess: (updated) => { queryClient.setQueryData(getGetRunQueryKey(id), updated); setCancelMsg('Cancellation request accepted by the API.'); }, onError: (e) => setCancelMsg(e instanceof Error ? e.message : 'Cancellation request failed.') });
+    cancel.mutate({ runId: id }, { onSuccess: (updated) => { queryClient.setQueryData(getGetRunQueryKey(id), updated); queryClient.invalidateQueries({ queryKey: getListRunsQueryKey() }); setCancelMsg('Cancellation request accepted by the API.'); }, onError: (e) => setCancelMsg(e instanceof Error ? e.message : 'Cancellation request failed.') });
   };
+
+  useEffect(() => {
+    if (!followLogs || !run || !['queued', 'starting', 'running', 'cancel_requested'].includes(run.status)) return;
+    const eventSource = new EventSource(`/api/runs/logs/stream?runId=${encodeURIComponent(id)}&follow=true${followCursor ? `&cursor=${followCursor}` : ''}&limit=100`);
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setLiveLogs((prev) => [...prev, data]);
+        setFollowCursor(String(data.sequence));
+      } catch {
+        // ignore parse errors
+      }
+    };
+    eventSource.onerror = () => {
+      eventSource.close();
+    };
+    return () => eventSource.close();
+  }, [followLogs, id, run?.status, followCursor]);
+
+  const allLogs = [...(logsQ.data?.items ?? []), ...liveLogs].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+
+  const formatLogTime = (entry: typeof allLogs[0]) => {
+    if ("timestamp" in entry && entry.timestamp) {
+      return new Date(entry.timestamp).toLocaleTimeString();
+    }
+    if ("createdAt" in entry && entry.createdAt) {
+      return date(entry.createdAt);
+    }
+    return "";
+  };
+
   return <AppShell current="/runs"><PageFrame title={run?.name || 'Run details'} kicker="RUN RECORD / ATTEMPTS" subtitle={run ? `Submitted ${date(run.createdAt)} · via node ${run.submittedViaNodeId}` : 'Loading run data from the API.'} action={<Link href="/runs" className="button button-outline" data-testid="link-back-runs"><ArrowRight size={15} /> All runs</Link>}>
     <QueryState loading={runQ.isLoading} error={runQ.isError} retry={() => runQ.refetch()} empty={!run} emptyTitle="Run record not available">{run && <>
-      <div className="run-detail-hero"><div className="run-detail-state"><span className={`detail-status-indicator ${run.status === 'running' ? 'is-running' : ''}`} /><div><span className="eyebrow">CURRENT STATUS</span><h2>{titleCase(run.status)}</h2></div></div><div className="run-detail-actions">{canCancel && <button className="button button-danger" disabled={cancel.isPending} onClick={doCancel} data-testid="button-cancel-run">{cancel.isPending ? <LoaderCircle className="spin" size={16} /> : <X size={16} />} Request cancellation</button>}</div></div>
+      <div className="run-detail-hero"><div className="run-detail-state"><span className={`detail-status-indicator ${run.status === 'running' ? 'is-running' : ''}`} /><div><span className="eyebrow">CURRENT STATUS</span><h2>{titleCase(run.status)}</h2></div></div><div className="run-detail-actions">{canCancel && <button className="button button-danger" disabled={cancel.isPending} onClick={doCancel} data-testid="button-cancel-run">{cancel.isPending ? <LoaderCircle className="spin" size={16} /> : <X size={16} />} Request cancellation</button>}{canRetry && <button className="button button-primary" disabled={retryRun.isPending} onClick={retry} data-testid="button-retry-run">{retryRun.isPending ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />} Retry run</button>}</div></div>
       {run.executionMode === 'unavailable' && <Notice kind="warning">The run reports unavailable execution. No worker execution is implied by this record.</Notice>}
       {run.executionMode === 'built_in_diagnostic' && <Notice>Built-in diagnostic execution mode. This run does not imply an isolated worker.</Notice>}
       {run.failureReason && <Notice kind="warning">Failure reported: {run.failureReason}</Notice>}
       {cancelMsg && <div className="form-feedback" role="status" data-testid="status-cancel-result">{cancelMsg}</div>}
+      {runMsg && <div className="form-feedback" role="status" data-testid="status-retry-result">{runMsg}</div>}
       <div className="detail-metrics"><Metric label="Execution mode" value={titleCase(run.executionMode)} note={run.workerNodeId ? `Worker ${run.workerNodeId}` : 'No worker node reported'} icon={Cpu} /><Metric label="Attempts" value={run.attemptCount} note="Reported by run detail endpoint" icon={RefreshCw} /><Metric label="Network policy" value={titleCase(run.networkPolicy)} note="Requested workload policy" icon={LockKeyhole} /><Metric label="Submitted by" value={run.submittedBy} note={`Via ${run.submittedViaNodeId}`} icon={Server} /></div>
-      <div className="detail-grid"><section className="panel"><PanelHead title="Run specification" meta={run.mode.toUpperCase()} /><div className="spec-list"><Spec label="Run ID" value={run.id} mono /><Spec label="Image" value={run.image || 'Not applicable'} mono /><Spec label="Image digest" value={run.imageDigest || 'Not reported'} mono /><Spec label="Command" value={run.command?.join(' ') || 'No command reported'} mono /><Spec label="Resources" value={`${run.resources.cpuMilli}m CPU · ${run.resources.memoryMiB} MiB memory · ${run.resources.diskMiB} MiB disk`} /><Spec label="Updated" value={date(run.updatedAt)} /></div></section>
-        <section className="panel"><PanelHead title="Attempts & logs" meta={logsQ.data ? `${logsQ.data.items.length} ENTRIES` : 'ORDERED STREAM'} /><QueryState loading={logsQ.isLoading} error={logsQ.isError} retry={() => logsQ.refetch()} empty={!logsQ.data?.items.length} emptyTitle="No log entries returned"><div className="log-list">{logsQ.data?.items.map((entry) => <div className="log-entry" key={`${entry.attempt}-${entry.sequence}`} data-testid={`log-entry-${entry.sequence}`}><span className="log-seq">{String(entry.sequence).padStart(3, '0')}</span><span className={`log-stream stream-${entry.stream}`}>{entry.stream}</span><span className="log-attempt">ATTEMPT {entry.attempt}</span><time>{date(entry.createdAt)}</time><p>{entry.message}</p></div>)}</div></QueryState>{logsQ.data?.nextCursor && <div className="inline-empty">Additional log entries are available beyond the returned page.</div>}</section>
+      <div className="detail-grid">
+        <section className="panel"><PanelHead title="Run specification" meta={run.mode.toUpperCase()} /><div className="spec-list"><Spec label="Run ID" value={run.id} mono /><Spec label="Image" value={run.image || 'Not applicable'} mono /><Spec label="Image digest" value={run.imageDigest || 'Not reported'} mono /><Spec label="Command" value={run.command?.join(' ') || 'No command reported'} mono /><Spec label="Resources" value={`${run.resources.cpuMilli}m CPU · ${run.resources.memoryMiB} MiB memory · ${run.resources.diskMiB} MiB disk`} /><Spec label="Updated" value={date(run.updatedAt)} /></div></section>
+        <section className="panel">
+          <PanelHead title="Live logs" meta={followLogs ? 'FOLLOWING' : 'PAUSED'} />
+          <div className="log-controls">
+            <label className="toggle-label">
+              <input type="checkbox" checked={followLogs} onChange={(e) => { setFollowLogs(e.target.checked); if (!e.target.checked) setLiveLogs([]); }} data-testid="toggle-follow-logs" />
+              <span>Follow (live tail)</span>
+            </label>
+            {followLogs && <span className="live-indicator" data-testid="live-indicator"><span className="pulse-dot" /> LIVE</span>}
+          </div>
+          <QueryState loading={logsQ.isLoading} error={logsQ.isError} retry={() => logsQ.refetch()} empty={allLogs.length === 0} emptyTitle="No log entries returned">
+            <div className="log-list" data-testid="log-list">
+              {allLogs.map((entry) => (
+                <div className="log-entry" key={`${entry.attempt}-${entry.sequence}-${"timestamp" in entry ? entry.timestamp : ""}`} data-testid={`log-entry-${entry.sequence}-${entry.attempt}`}>
+                  <span className="log-seq">{String(entry.sequence).padStart(3, '0')}</span>
+                  <span className={`log-stream stream-${entry.stream}`}>{entry.stream}</span>
+                  <span className="log-attempt">ATTEMPT {entry.attempt}</span>
+                  <time>{formatLogTime(entry)}</time>
+                  <p>{entry.message}</p>
+                </div>
+              ))}
+            </div>
+          </QueryState>
+          {logsQ.data?.nextCursor && !followLogs && <div className="inline-empty">Additional log entries are available beyond the returned page.</div>}
+        </section>
       </div>
+      {Array.isArray(attempts) && attempts.length > 0 && <section className="panel table-panel"><PanelHead title="Attempt history" meta={`${attempts.length} RECORDED`} /><div className="table-wrap"><table><thead><tr><th>Attempt</th><th>Status</th><th>Worker</th><th>Started</th><th>Finished</th><th>Error</th><th>Logs</th></tr></thead><tbody>{attempts.map((attempt, index) => <tr key={attempt.id || `${attempt.attempt ?? index}`} data-testid={`row-attempt-${attempt.attempt ?? index}`}><td><b>#{attempt.attempt ?? index + 1}</b></td><td><span className={statusClass(attempt.status)}><span className="status-dot" />{titleCase(attempt.status)}</span></td><td className="table-sub mono">{attempt.workerNodeId || 'Not reported'}</td><td className="table-sub">{date(attempt.startedAt)}</td><td className="table-sub">{date(attempt.finishedAt)}</td><td className="table-sub">{attempt.errorReason || '—'}</td><td><button className="button button-outline button-sm" data-testid={`button-attempt-logs-${attempt.attempt ?? index}`}>View logs</button></td></tr>)}</tbody></table></div></section>}
+      <section className="panel"><PanelHead title="Artifacts" meta="DOWNLOADABLE OUTPUTS" /><QueryState loading={false} error={false} retry={() => {}} empty={true} emptyTitle="No artifacts recorded for this run">
+        <div className="artifact-list"><div className="inline-empty">Artifact listing will be available after run completion.</div></div>
+      </QueryState></section>
     </>}</QueryState>
   </PageFrame></AppShell>;
 }
 function Spec({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) { return <div className="spec-row"><span>{label}</span><b className={mono ? 'mono' : ''}>{value}</b></div>; }
+type RunAttempt = {
+  id?: string;
+  attempt?: number;
+  status?: string;
+  workerNodeId?: string | null;
+  providerRunId?: string;
+  errorReason?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  createdAt?: string;
+};
 
 function AuthHome() { return <><Show when="signed-in"><Redirect to="/user-portal" /></Show><Show when="signed-out" treatPendingAsSignedOut><ProductHome /></Show></>; }
 function Protected({ children }: { children: React.ReactNode }) { return <><Show when="signed-in">{children}</Show><Show when="signed-out"><Redirect to="/" /></Show></>; }
@@ -377,6 +543,7 @@ function RoutedApp() {
       <Route path="/user-portal">{() => <Protected><Portal /></Protected>}</Route>
       <Route path="/nodes">{() => <Protected><NodesPage /></Protected>}</Route>
       <Route path="/membership">{() => <Protected><MembershipPage /></Protected>}</Route>
+      <Route path="/membership/:proposalId">{() => <Protected><ProposalDetailPage /></Protected>}</Route>
       <Route path="/runs">{() => <Protected><RunsPage /></Protected>}</Route>
       <Route path="/runs/new">{() => <Protected><NewRunPage /></Protected>}</Route>
       <Route path="/runs/:runId">{() => <Protected><RunDetailPage /></Protected>}</Route>

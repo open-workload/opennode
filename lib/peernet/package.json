@@ -1,0 +1,35 @@
+{
+  "name": "@workspace/peernet",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./membership": "./src/membership.ts",
+    "./signatures": "./src/signatures.ts",
+    "./errors": "./src/errors.ts",
+    "./replayProtection": "./src/replayProtection.ts",
+    "./inMemory": "./src/inMemory.ts",
+    "./transport": "./src/transport.ts",
+    "./handshake": "./src/handshake.ts",
+    "./bootstrap": "./src/bootstrap.ts"
+  },
+  "dependencies": {
+    "@workspace/opennode-domain": "workspace:*",
+    "uint8arrays": "^5.0.0",
+    "multiformats": "^13.0.0",
+    "protons-runtime": "^5.0.0",
+    "it-pushable": "^3.0.0",
+    "it-length-prefixed": "^9.0.0",
+    "it-stream-types": "^2.0.0",
+    "bl": "^6.0.0",
+    "promise-retry": "^2.0.1",
+    "@libp2p/interface": "^3.3.0",
+    "@libp2p/peer-id": "^5.1.9"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vitest": "^5.0.0",
+    "@types/promise-retry": "^1.1.6"
+  }
+}

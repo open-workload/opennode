@@ -184,6 +184,31 @@ export const CreateMembershipProposalResponse = zod.object({
 
 
 /**
+ * @summary Get a membership proposal by ID
+ */
+export const GetMembershipProposalParams = zod.object({
+  "proposalId": zod.coerce.string()
+})
+
+export const GetMembershipProposalResponse = zod.object({
+  "id": zod.string(),
+  "kind": zod.enum(['admission', 'eviction']),
+  "targetNodeId": zod.string(),
+  "targetNodeName": zod.string().nullable(),
+  "reason": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'rejected', 'committed', 'expired']),
+  "membershipEpoch": zod.number().int(),
+  "eligibleVoterCount": zod.number().int(),
+  "requiredYesVotes": zod.number().int(),
+  "yesVotes": zod.number().int(),
+  "noVotes": zod.number().int(),
+  "currentNodeVote": zod.union([zod.enum(['yes', 'no']),zod.null()]),
+  "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Cast a signed membership vote
  */
 export const CastMembershipVoteParams = zod.object({
@@ -195,6 +220,39 @@ export const CastMembershipVoteBody = zod.object({
 })
 
 export const CastMembershipVoteResponse = zod.object({
+  "id": zod.string(),
+  "kind": zod.enum(['admission', 'eviction']),
+  "targetNodeId": zod.string(),
+  "targetNodeName": zod.string().nullable(),
+  "reason": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'rejected', 'committed', 'expired']),
+  "membershipEpoch": zod.number().int(),
+  "eligibleVoterCount": zod.number().int(),
+  "requiredYesVotes": zod.number().int(),
+  "yesVotes": zod.number().int(),
+  "noVotes": zod.number().int(),
+  "currentNodeVote": zod.union([zod.enum(['yes', 'no']),zod.null()]),
+  "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Submit a response to an eviction proposal
+ */
+export const SubmitEvictionResponseParams = zod.object({
+  "proposalId": zod.coerce.string()
+})
+
+export const submitEvictionResponseBodyResponseMax = 1000;
+
+
+
+export const SubmitEvictionResponseBody = zod.object({
+  "response": zod.string().min(1).max(submitEvictionResponseBodyResponseMax)
+})
+
+export const SubmitEvictionResponseResponse = zod.object({
   "id": zod.string(),
   "kind": zod.enum(['admission', 'eviction']),
   "targetNodeId": zod.string(),
@@ -228,6 +286,53 @@ export const RequestNodeLeaveResponse = zod.object({
   "status": zod.enum(['leaving', 'already_leaving']),
   "activeRunsToDrain": zod.number().int()
 })
+
+
+/**
+ * @summary Get current membership status
+ */
+export const GetMembershipStatusResponse = zod.object({
+  "localNodeId": zod.string(),
+  "clusterId": zod.string(),
+  "membershipEpoch": zod.number().int(),
+  "memberIds": zod.array(zod.string()),
+  "acceptingNewWork": zod.boolean(),
+  "leftLocalNode": zod.boolean(),
+  "quarantinedNodeId": zod.string().nullable(),
+  "syncStatus": zod.enum(['synced', 'syncing', 'degraded', 'local_only']),
+  "proposalCounts": zod.object({
+  "pending": zod.number().int(),
+  "approved": zod.number().int(),
+  "rejected": zod.number().int(),
+  "committed": zod.number().int(),
+  "expired": zod.number().int()
+}),
+  "retentionRules": zod.object({
+  "proposalTtlMs": zod.number().int(),
+  "ballotTtlMs": zod.number().int()
+})
+})
+
+
+/**
+ * @summary List peer statuses
+ */
+export const ListPeerStatusResponseItem = zod.object({
+  "nodeId": zod.string(),
+  "clusterId": zod.string(),
+  "status": zod.enum(['local', 'connected', 'offline', 'leaving', 'quarantined']),
+  "lastSeenAt": zod.coerce.date(),
+  "lastHeartbeatAt": zod.coerce.date().nullish(),
+  "protocolVersion": zod.string(),
+  "membershipEpoch": zod.number().int(),
+  "isLocal": zod.boolean(),
+  "capabilities": zod.array(zod.string()),
+  "address": zod.string().nullable(),
+  "metadata": zod.object({
+
+}).passthrough()
+})
+export const ListPeerStatusResponse = zod.array(ListPeerStatusResponseItem)
 
 
 /**
@@ -537,6 +642,170 @@ export const CancelRunResponse = zod.object({
   "failureReason": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Stream run logs via Server-Sent Events
+ */
+export const streamRunLogsQueryFollowDefault = true;
+
+export const StreamRunLogsQueryParams = zod.object({
+  "runId": zod.coerce.string(),
+  "follow": zod.coerce.boolean().default(streamRunLogsQueryFollowDefault)
+})
+
+export const StreamRunLogsResponse = zod.unknown()
+
+
+/**
+ * @summary List artifacts for a run
+ */
+export const ListRunArtifactsQueryParams = zod.object({
+  "runId": zod.coerce.string(),
+  "attemptId": zod.coerce.string().optional()
+})
+
+export const ListRunArtifactsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "chunkId": zod.string(),
+  "runId": zod.string(),
+  "attemptId": zod.string().nullable(),
+  "name": zod.string(),
+  "size": zod.number().int()
+})),
+  "nextCursor": zod.string().nullable()
+})
+
+
+/**
+ * @summary Download a run artifact
+ */
+export const GetRunArtifactParams = zod.object({
+  "chunkId": zod.coerce.string()
+})
+
+export const GetRunArtifactResponse = zod.unknown()
+
+
+/**
+ * @summary Retry a failed or cancelled run
+ */
+export const RetryRunParams = zod.object({
+  "runId": zod.coerce.string()
+})
+
+export const retryRunResponseResourcesCpuMilliMin = 100;
+export const retryRunResponseResourcesCpuMilliMax = 16000;
+
+export const retryRunResponseResourcesMemoryMiBMin = 64;
+export const retryRunResponseResourcesMemoryMiBMax = 65536;
+
+export const retryRunResponseResourcesDiskMiBMin = 64;
+export const retryRunResponseResourcesDiskMiBMax = 1048576;
+
+export const retryRunResponseResourcesTimeoutSecondsMax = 86400;
+
+
+
+export const RetryRunResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "mode": zod.enum(['diagnostic', 'container']),
+  "image": zod.string().nullable(),
+  "imageDigest": zod.string().nullable(),
+  "command": zod.array(zod.string()),
+  "status": zod.enum(['queued', 'starting', 'running', 'cancel_requested', 'succeeded', 'failed', 'cancelled', 'timed_out', 'infrastructure_error', 'blocked']),
+  "executionMode": zod.enum(['built_in_diagnostic', 'isolated_worker', 'unavailable']),
+  "submittedBy": zod.string(),
+  "submittedViaNodeId": zod.string(),
+  "workerNodeId": zod.string().nullable(),
+  "attemptCount": zod.number().int(),
+  "resources": zod.object({
+  "cpuMilli": zod.number().int().min(retryRunResponseResourcesCpuMilliMin).max(retryRunResponseResourcesCpuMilliMax),
+  "memoryMiB": zod.number().int().min(retryRunResponseResourcesMemoryMiBMin).max(retryRunResponseResourcesMemoryMiBMax),
+  "diskMiB": zod.number().int().min(retryRunResponseResourcesDiskMiBMin).max(retryRunResponseResourcesDiskMiBMax),
+  "timeoutSeconds": zod.number().int().min(1).max(retryRunResponseResourcesTimeoutSecondsMax)
+}),
+  "networkPolicy": zod.enum(['deny_all', 'allowlist']),
+  "failureReason": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Reconcile run state with execution providers
+ */
+export const ReconcileRunsBody = zod.object({
+  "now": zod.number().int().optional(),
+  "lostWorkers": zod.array(zod.string()).optional(),
+  "providerOutageWorkers": zod.array(zod.string()).optional()
+})
+
+export const ReconcileRunsResponse = zod.object({
+  "fencedAttemptCount": zod.number().int(),
+  "fencedAttempts": zod.array(zod.string()),
+  "appliedSequence": zod.number().int(),
+  "runCount": zod.number().int(),
+  "attemptCount": zod.number().int()
+})
+
+
+/**
+ * @summary Get all feature flags
+ */
+export const GetFeatureFlagsResponse = zod.object({
+  "flags": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
+ * @summary Update feature flag overrides
+ */
+export const UpdateFeatureFlagsBody = zod.object({
+  "flags": zod.record(zod.string(), zod.unknown())
+})
+
+export const UpdateFeatureFlagsResponse = zod.object({
+  "flags": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
+ * @summary Activate the kill switch
+ */
+export const activateKillSwitchBodyReasonMax = 1000;
+
+export const activateKillSwitchBodyActivatedByMax = 128;
+
+
+
+export const ActivateKillSwitchBody = zod.object({
+  "reason": zod.string().min(1).max(activateKillSwitchBodyReasonMax),
+  "activatedBy": zod.string().min(1).max(activateKillSwitchBodyActivatedByMax)
+})
+
+export const ActivateKillSwitchResponse = zod.object({
+  "state": zod.object({
+  "enabled": zod.boolean(),
+  "reason": zod.string(),
+  "activatedAt": zod.coerce.date(),
+  "activatedBy": zod.string()
+})
+})
+
+
+/**
+ * @summary Deactivate the kill switch
+ */
+export const DeactivateKillSwitchResponse = zod.object({
+  "state": zod.object({
+  "enabled": zod.boolean(),
+  "reason": zod.string(),
+  "activatedAt": zod.coerce.date(),
+  "activatedBy": zod.string()
+})
 })
 
 

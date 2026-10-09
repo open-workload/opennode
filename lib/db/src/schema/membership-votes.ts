@@ -1,5 +1,6 @@
 import { createInsertSchema } from "drizzle-zod";
-import { index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { check, index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { membershipProposalsTable } from "./membership-proposals";
 import { voteChoiceEnum } from "./enums";
@@ -19,6 +20,8 @@ export const membershipVotesTable = pgTable(
   (table) => [
     uniqueIndex("membership_votes_proposal_voter_unique").on(table.proposalId, table.voterNodeId),
     index("membership_votes_voter_created_idx").on(table.voterNodeId, table.createdAt),
+    index("membership_votes_epoch_idx").on(table.membershipEpoch),
+    check("membership_votes_voter_not_empty", sql`length(trim(${table.voterNodeId})) > 0`),
   ],
 );
 

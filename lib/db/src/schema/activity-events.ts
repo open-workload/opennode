@@ -1,5 +1,6 @@
 import { createInsertSchema } from "drizzle-zod";
-import { index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { check, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { activityEventKindEnum } from "./enums";
 
@@ -16,6 +17,7 @@ export const activityEventsTable = pgTable(
     index("activity_events_created_idx").on(table.createdAt),
     index("activity_events_kind_created_idx").on(table.kind, table.createdAt),
     index("activity_events_actor_created_idx").on(table.actorNodeId, table.createdAt),
+    check("activity_events_message_not_empty", sql`length(trim(${table.message})) > 0`),
   ],
 );
 

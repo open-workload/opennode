@@ -1,8 +1,20 @@
 import express, { type Express } from "express";
-import cors from "cors";
+import helmet from "helmet";
+import { clerkMiddleware } from "@clerk/express";
+import { publishableKeyFromHost } from "@clerk/shared/keys";
 import pinoHttp from "pino-http";
 import router from "./routes";
+import healthRouter from "./routes/health";
+import metricsRouter from "./routes/metrics";
 import { logger } from "./lib/logger";
+import { correlationMiddleware } from "./middlewares/correlation";
+import { authMiddleware } from "./middlewares/auth";
+import {
+  CLERK_PROXY_PATH,
+  clerkProxyMiddleware,
+  getClerkProxyHost,
+} from "./middlewares/clerkProxyMiddleware";
+import { sameOriginWriteGuard } from "./middlewares/sameOriginWriteGuard";
 
 const app: Express = express();
 
@@ -25,10 +37,27 @@ app.use(
     },
   }),
 );
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Clerk's Frontend API proxy must run before parsers, which may consume its raw
+// request body. It is a no-op in development and enabled by the canonical
+// middleware in production.
+app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(correlationMiddleware);
+app.use(express.json({ limit: "256kb" }));
+app.use(express.urlencoded({ extended: true, limit: "32kb", parameterLimit: 100 }));
+app.use(
+  clerkMiddleware((req) => ({
+    publishableKey: publishableKeyFromHost(
+      getClerkProxyHost(req) ?? "",
+      process.env.CLERK_PUBLISHABLE_KEY,
+    ),
+  })),
+);
 
-app.use("/api", router);
+// The user interface and API share the artifact's origin, so credentialed
+// wildcard CORS is unnecessary. Health is public; every other API route uses
+// Clerk session-cookie or Clerk-verified bearer authentication.
+app.use("/api", healthRouter);
+app.use("/api", authMiddleware, sameOriginWriteGuard, correlationMiddleware, metricsRouter, router);
 
 export default app;

@@ -73,12 +73,12 @@ export function admissionThreshold(electorateSize: number): number {
   assertElectorateSize(electorateSize);
   return electorateSize === 1
     ? 1
-    : Math.max(2, Math.ceil(0.2 * electorateSize));
+    : Math.max(2, Math.ceil((electorateSize * 20) / 100));
 }
 
 export function evictionThreshold(electorateSize: number): number {
   assertElectorateSize(electorateSize);
-  return Math.ceil(0.5 * electorateSize);
+  return Math.ceil(electorateSize / 2);
 }
 
 export function createAdmissionProposal(

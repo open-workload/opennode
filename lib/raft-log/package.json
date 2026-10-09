@@ -1,0 +1,16 @@
+{
+  "name": "@workspace/raft-log",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@workspace/opennode-domain": "workspace:*",
+    "@workspace/sync-engine": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}
