@@ -1,3 +1,17 @@
+/**
+ * Builds an nftables output chain scoped to a worker cgroup; policy drop.
+ *
+ *   config + cgroupPath ─▶ buildRules() ─▶ `nft -f -`, one spawn per rule
+ *                                      │
+ *        accept meta cgroup = path ─────┤
+ *        drop  169.254.169.254 / .253 ─┤ if blockMetadataEndpoints
+ *        drop  control-plane CIDRs ─────┤ if blockControlPlane
+ *        accept allowedEgressHosts ─────┤
+ *        drop  everything else ─────────┘
+ *
+ *   apply() is idempotent per instance   remove() ─▶ delete chain, then table
+ */
+
 import { WorkerRuntimeError } from "./errors";
 
 export interface NetworkRule {

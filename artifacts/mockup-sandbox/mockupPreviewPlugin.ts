@@ -1,3 +1,13 @@
+/**
+ * Vite plugin: glob mockup .tsx files into a generated module map.
+ *
+ *   build start / add / unlink / 404 ──▶ discover ──▶ generate ──▶ write
+ *                                          glob,        compare    .generated/
+ *                                          skip _*      source     mockup-components.ts
+ *
+ * Only rewrites the file when the generated source actually changes.
+ * The chokidar watcher is closed by closeWatcher.
+ */
 import { mkdirSync, writeFileSync } from "fs";
 import path from "path";
 import glob from "fast-glob";

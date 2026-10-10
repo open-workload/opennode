@@ -1,3 +1,13 @@
+/**
+ * In-memory RaftStorage: an entry array offset by the snapshot index.
+ *
+ *   index <= snapshotIndex ──▶ snapshotTerm;  getEntry returns undefined
+ *   index >  snapshotIndex ──▶ entries[index - snapshotIndex - 1]
+ *        │
+ *        ├──▶ appendEntries pads a hole with { index: 0, term: 0, entry: null }
+ *        ├──▶ truncateSuffix / truncateTo splice off the tail
+ *        └──▶ saveSnapshot rebases the offset used by every later read
+ */
 import { RaftStorage, RaftLogEntry } from "./types";
 
 export type { RaftStorage } from "./types";

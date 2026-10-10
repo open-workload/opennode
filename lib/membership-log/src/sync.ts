@@ -1,3 +1,16 @@
+/**
+ * Catch the consensus log up from a peer, then push membership into the domain view.
+ *
+ *   peer claim ──▶ membershipLog.reconcilePeer ──┬── consistent ──▶ skip catch-up
+ *        │                                       └── otherwise ──▶ runCatchUp
+ *        │                                                            (local, source)
+ *        ▼                                                                │
+ *   membershipLog.reconcile(now) ◀─────────────────────────────────────────┘
+ *        │
+ *        ▼
+ *   membershipService.reconcile({ epoch, memberIds, sequence })
+ *        └──▶ MembershipSyncResult { reconcile, catchUp, membership }
+ */
 import {
   ClusterId,
   MembershipService,

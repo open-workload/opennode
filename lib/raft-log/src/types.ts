@@ -1,3 +1,13 @@
+/**
+ * Wire and storage contracts for the Raft node; types only, no runtime code.
+ *
+ *   RaftNode ──▶ RaftTransport ──▶ VoteRequest / VoteResponse
+ *            ├──▶                ──▶ AppendEntries{Request,Response}
+ *            ├──▶                ──▶ InstallSnapshot{Request,Response}
+ *            └──▶ RaftStorage ──▶ entries, term, votedFor, snapshot, truncate
+ *   RaftConfig { peers, timeouts, heartbeat, snapshot } with RaftState =
+ *   "follower" | "candidate" | "leader"; RaftLogEntry = { index, term, entry }
+ */
 import { ClusterId, SignedLogEntry } from "@workspace/sync-engine";
 
 export interface RaftConfig {

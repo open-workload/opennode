@@ -1,3 +1,16 @@
+/**
+ * The worker submission contract and its validator. Pure: no I/O, no side effects.
+ *
+ *   WorkerSpec ─▶ validateWorkerSpec ─▶ PolicyResult { ok, digest, egress, issues }
+ *
+ *   image.digest ─▶ /^sha256:[a-f0-9]{64}$/ ─▶ must be immutable-pinned
+ *   limits.* ─────▶ all six must be positive safe integers
+ *   network ──────▶ deny_all | allowlist (non-empty); metadata + control plane must be blocked
+ *   env ──────────▶ unique /^[A-Za-z_][A-Za-z0-9_]*$/ names; secret_ref may not inline a value
+ *
+ *   Every rule appends an issue; validation never throws and never short-circuits.
+ */
+
 const DIGEST_RE = /^sha256:[a-f0-9]{64}$/;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 

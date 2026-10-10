@@ -1,3 +1,13 @@
+/**
+ * Signed cluster snapshots: a compacted, Merkle-rooted view of the log.
+ *
+ *   entry hashes ──▶ merkle root ──▶ snapshotId ──▶ signer ──▶ ClusterSnapshot
+ *        │
+ *   height and epoch must be non-negative safe integers, else SNAPSHOT_INVALID
+ *
+ *   verifySnapshot re-checks schema, cluster, approval and the signature
+ *   over the same canonical payload; each failure throws.
+ */
 import {
   ClusterId,
   SCHEMA_VERSION,

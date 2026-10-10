@@ -1,3 +1,12 @@
+/**
+ * Run lifecycle plus the workload shape. A container run carries an image only.
+ *
+ *   queued ──▶ scheduled ──▶ running ──▶ succeeded | failed
+ *      └──────────┴────────────┴────────────▶ cancelled
+ *
+ * An illegal edge throws INVALID_RUN_TRANSITION. A workload carrying `command` or
+ * `entrypoint` is rejected, so no command-execution API is defined here.
+ */
 import { DomainError } from "./errors";
 
 export interface BuiltInDiagnosticWorkload {

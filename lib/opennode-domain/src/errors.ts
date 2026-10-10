@@ -1,3 +1,14 @@
+/**
+ * The domain error vocabulary: a closed set of codes plus one Error subclass.
+ *
+ *   call site ──▶ new DomainError(code, message) ──▶ throw ──▶ caller catches
+ *                                      │            │
+ *                        code: one of  │            │  message: free text
+ *                        DomainErrorCode           │
+ *
+ * No status code and no HTTP mapping live here: each caller shapes `code` into
+ * whatever it needs. Only api-server routes/membership.ts tests instanceof today.
+ */
 export type DomainErrorCode =
   | "INVALID_IDENTIFIER"
   | "INVALID_ELECTORATE"

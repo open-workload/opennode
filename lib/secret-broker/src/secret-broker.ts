@@ -1,3 +1,15 @@
+/**
+ * Second broker implementation: branded types, correlation IDs, throwing
+ * errors. Imported only by worker-runtime, which nothing constructs.
+ *
+ *   issue / revoke / get + CorrelationIds ──▶ assert* ──▶ store op
+ *                                              │           │
+ *                                              │       audit.write
+ *                                              ▼
+ *   frozen { issue, revoke, get } ──▶ SecretBrokerError on any failure
+ *
+ * Denials throw here rather than returning null, unlike src/index.ts.
+ */
 import {
   SecretId,
   JobScope,

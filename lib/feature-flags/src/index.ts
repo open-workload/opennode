@@ -1,3 +1,14 @@
+/**
+ * The flag facade: six core flags, validated overrides, kill switch.
+ *
+ *   override ──▶ allowedValues? ──▶ delete + re-register ──▶ new default
+ *   call site ──▶ isNewExecutionAllowed ──▶ kill switch ──▶ registry
+ *              ▶ getMaxConcurrentRuns / isLeaveEnabled / isEvictionEnabled
+ *              ▶ isSnapshotGenerationEnabled / isGossipEnabled
+ *
+ * The kill switch gates isNewExecutionAllowed only, and only when this
+ * instance was built with enableKillSwitch.
+ */
 import { FeatureFlagsError } from "./errors";
 import { FlagRegistry, type FlagEvaluationContext, type FlagValue } from "./flagRegistry";
 import { KillSwitch, type KillSwitchState } from "./killSwitch";

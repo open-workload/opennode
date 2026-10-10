@@ -1,3 +1,15 @@
+/**
+ * Pulls an OCI image with skopeo, pins the digest, then verifies with cosign.
+ *
+ *   imageRef ─▶ skopeo copy ─▶ stdout digest ─┬─ mismatch ─▶ throw digest_mismatch
+ *                                             └─ match
+ *   expectedDigest ─────────────────────────▶│
+ *                                             ▼
+ *   ref@digest ─▶ cosign verify ─▶ policyResult (verified | error; never throws)
+ *
+ *   pull timeout (default 300s) ─▶ SIGKILL ─▶ reject timeout
+ */
+
 import { WorkerRuntimeError } from "./errors";
 
 export interface ImagePullResult {

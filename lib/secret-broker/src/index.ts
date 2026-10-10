@@ -1,3 +1,15 @@
+/**
+ * Job-scoped secret broker. This is the wired copy: api-server runtime.ts
+ * instantiates it through the package's "." export.
+ *
+ *   issue(jobId, worker, ttl, value) ──▶ store.set ──▶ audit secret_issued
+ *   get(jobId, requester) ──▶ exists? revoked? expired? worker match?
+ *                               │        │        │          │
+ *                               └────────┴────────┴──▶ null + denied
+ *                               all pass ──▶ value + accessed
+ *
+ * Every denial returns null; nothing here throws. MemorySecretStore is a Map.
+ */
 export interface SecretBroker {
   issueSecret(
     jobScopedId: string,

@@ -1,3 +1,15 @@
+/**
+ * Wire types, construction, and signing for gossip messages (presence, capacity).
+ *
+ *   createPresenceAnnouncement / createCapacityAdvertisement
+ *        │  assert ids, ttl, version ──▶ signMessage ──▶ frozen message + public key
+ *        ▼
+ *   GossipMessage ──▶ validateGossipMessage(msg, expectedClusterId, now)
+ *        │              schema+protocol version ──▶ category ──▶ cluster match
+ *        │              ──▶ expiry ──▶ ed25519 verify ──▶ rumorId binds originId
+ *        ▼
+ *   signed message ──▶ ./rumorSet (digest, reconcile); ./policy gates categories
+ */
 import { createHash } from "node:crypto";
 import {
   ClusterId,

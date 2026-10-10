@@ -14,9 +14,14 @@
  * - Only active in production (Clerk proxying doesn't work for dev instances)
  * - Must be mounted BEFORE express.json() middleware
  *
- * Usage in app.ts:
- *   import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware";
- *   app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+ * Request flow (production + CLERK_SECRET_KEY only; otherwise pass-through):
+ *
+ *   /api/__clerk/* ─▶ strip the prefix ─▶ https://frontend-api.clerk.dev
+ *     out: + Clerk-Proxy-Url from x-forwarded-*, + Clerk-Secret-Key, X-Forwarded-For
+ *     back: Content-Length present or bodyless ─▶ pipe through untouched
+ *           no length (JWKS, /v1/client) ─▶ buffer ─▶ re-send with a length
+ *
+ *   getClerkProxyHost: leftmost x-forwarded-host, else the Host header.
  */
 
 import type { IncomingHttpHeaders } from 'http';

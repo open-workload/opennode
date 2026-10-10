@@ -1,3 +1,13 @@
+/**
+ * Content addressing and checksum helpers over sha256.
+ *
+ *   bytes | string ──▶ sha256 ──▶ hex          (sha256Hex / contentAddress)
+ *   bytes | string ──▶ sha256 ──▶ Uint8Array   (sha256Bytes)
+ *   object ──▶ sorted-key JSON ──▶ stableStringify ──▶ canonical text
+ *
+ * verifyChecksum guards chunk reads: hash again, compare digests.
+ * timingSafeEqualHex compares with Array.every, so it is not constant-time.
+ */
 import { createHash } from "node:crypto";
 
 export function sha256Hex(input: Uint8Array | string): string {

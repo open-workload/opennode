@@ -1,3 +1,12 @@
+/**
+ * Derives a node ID from its secret key and refuses to start on a collision.
+ *
+ *   secretKey ──▶ FNV-1a twice ──▶ nodeId (16 hex chars; not a public-key hash)
+ *
+ *   keystore ──▶ load ──▶ absent ──▶ mint key ──▶ DHT probe ──▶ save
+ *                    └─ present ──▶ re-derive ──▶ differs? ──▶ IDENTITY_COLLISION
+ *   accepted nodeId ──▶ upsert cluster_nodes ──▶ upsert local singleton ──▶ NodeId
+ */
 import { DomainError } from "./errors";
 import { createNodeId, NodeId } from "./schemas";
 import { clusterNodesTable, localNodeIdentityTable } from "@workspace/db";

@@ -1,3 +1,17 @@
+/**
+ * Per-chunk encryption (each chunk key wrapped by the master key), plus
+ * in-memory replication bookkeeping and per-attempt download grants.
+ *
+ *   plaintext ─▶ chunkKey ─▶ AES-GCM ─▶ ciphertext ─▶ address
+ *                  │                       │
+ *                  └──── wrapped by master ┘
+ *
+ *   decrypt ─▶ unwrap (masterKeyId must match) ─▶ checksum ─▶ plaintext | throw
+ *
+ *   recordReplication ─▶ ReplicationTracker (in-memory Map)
+ *   authorize/checkAccess ─▶ DownloadAuthz (jobId:attemptId -> worker set)
+ */
+
 import { Encryptor, EncryptedData, createAesGcmEncryptor } from "@workspace/content-store/encryption";
 import { contentAddress, verifyChecksum } from "@workspace/content-store/hash";
 import { WorkerRuntimeError } from "./errors";

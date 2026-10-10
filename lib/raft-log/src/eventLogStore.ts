@@ -1,3 +1,14 @@
+/**
+ * Adapter that presents a RaftNode through the sync-engine EventLogStore interface.
+ *
+ *   RaftEventLogStoreConfig ──▶ RaftNode(config, in-memory storage, transport)
+ *        │                                     │
+ *   append / getEntry / getRange / getHeight ──┘
+ *        │  not leader ──▶ throws
+ *        ▼
+ *   in-memory RaftStorage ──▶ raft.replicate() ──▶ peers over RaftTransport
+ *   replace(entries) ──▶ validateEntryChain ──▶ truncateTo(0) ──▶ re-append at term 1
+ */
 import {
   EventLogStore,
   SignedLogEntry,

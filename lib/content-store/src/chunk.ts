@@ -1,3 +1,13 @@
+/**
+ * Encrypts, content-addresses and checksums one chunk of a run's output stream.
+ *
+ *   plaintext ──▶ sha256 ──▶ checksum ──▶ encryptor ──▶ sha256 ──▶ address
+ *                  │                                     │            │
+ *            kept in metadata                  stored by address in the store
+ *
+ * unchunk reverses the cipher, rehashes the plaintext and throws CHECKSUM_MISMATCH
+ * if the digest differs; verifyRef only compares a stored checksum string.
+ */
 import { Encryptor, EncryptedData } from "./encryption";
 import { contentAddress, verifyChecksum, sha256Hex } from "./hash";
 import { ContentStoreError } from "./errors";

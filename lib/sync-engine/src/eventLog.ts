@@ -1,3 +1,14 @@
+/**
+ * Hash-chained, signed event log, plus the store interface behind it.
+ *
+ *   ClusterEvent ──▶ entryHash ──▶ signer ──▶ SignedLogEntry ──▶ store
+ *                        ▲                          │
+ *                        └────── prevHash ◀─────────┘
+ *
+ *   validateEntry re-checks schema, cluster, sequence, prevHash, epoch,
+ *   the recomputed hash and the signature. Nothing is appended that has
+ *   not already passed all seven.
+ */
 import {
   ClusterEvent,
   ClusterId,

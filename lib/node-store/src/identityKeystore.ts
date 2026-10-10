@@ -1,3 +1,15 @@
+/**
+ * Reads and writes this node's secret key to one JSON file.
+ *
+ *   OPENNODE_KEYSTORE_PATH, else .local/opennode/node-identity.json
+ *        │
+ *        ▼
+ *   load() ──▶ readFileSync ──▶ parse ──▶ { secretKey, nodeId }
+ *          ENOENT ──▶ undefined   not both strings ──▶ undefined
+ *   save(id) ──▶ mkdirSync recursive ──▶ writeFileSync, mode 0600
+ *
+ * Any read error other than ENOENT is rethrown. Nothing is encrypted.
+ */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { NodeIdentityKeystore, StoredNodeIdentity } from "@workspace/opennode-domain";

@@ -6,6 +6,14 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  * Clerk session cookies authenticate browser requests, so state-changing
  * requests must prove they came from this artifact's origin. CLI requests use
  * Clerk-verified bearer tokens and do not depend on browser cookies.
+ *
+ *   GET | HEAD | OPTIONS ─▶ next()      (reads are not guarded)
+ *   Authorization: Bearer ─▶ next()     (CLI path, cookie-independent)
+ *
+ *   write ─▶ Origin + Host present? ──no──▶ 403 CSRF_REJECTED
+ *          ─▶ sec-fetch-site, if sent, must be "same-origin" ──no──▶ 403
+ *          ─▶ Origin parses as http(s) and its host === Host ──no──▶ 403
+ *          ─▶ next()
  */
 export function sameOriginWriteGuard(
   req: Request,

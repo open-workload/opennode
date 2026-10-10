@@ -1,3 +1,13 @@
+/**
+ * Deterministic run and attempt IDs, so the same submission deduplicates.
+ *
+ *   cluster+actor+key+payloadHash ──▶ sha256 ──▶ run-<32hex>
+ *   runId + attempt ordinal       ──▶ sha256 ──▶ attempt-<16hex>
+ *
+ *   Guards, both throwing INVALID_SUBMISSION: every string above must be
+ *   non-empty, and the attempt ordinal a positive safe integer. Also
+ *   exports computeRunPayloadHash (canonical spec JSON ──▶ sha256).
+ */
 import { createHash } from "node:crypto";
 import { sha256Hex, stableStringify } from "@workspace/sync-engine";
 import { RunCoordinatorError } from "./errors";

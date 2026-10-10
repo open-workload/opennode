@@ -1,3 +1,15 @@
+/**
+ * Alert rule definitions and the registry that turns a metric value into a notification.
+ *
+ *   createDefaultAlertRules() ──▶ AlertRule { id, severity, runbookUrl }
+ *        │
+ *        ├──▶ condition.metricName ──▶ evaluate(name, value, labels)
+ *        │                                │
+ *        │             operator/threshold│──▶ match? ──▶ firingAlerts ──▶ handlers
+ *        │                                │              │
+ *        │                                │              └── no match ──▶ resolved
+ *        └──▶ nothing in this repo emits these metric names or calls evaluate()
+ */
 export enum AlertSeverity {
   Info = "info",
   Warning = "warning",

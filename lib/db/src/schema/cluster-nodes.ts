@@ -1,3 +1,13 @@
+/**
+ * Known cluster members, one row per node.
+ *
+ *   cluster_nodes ──▶ id, name, public_key (unique), address, is_local
+ *        │       └──▶ status: node_status, role: node_role (from ./enums)
+ *        │       └──▶ membership_epoch >= 0, protocol_version non-empty
+ *        │       └──▶ can_execute: whether this node may be given runs
+ *        └──▶ partial unique index: at most one row with is_local = true
+ *   table ──▶ createInsertSchema ──▶ InsertClusterNode / ClusterNode
+ */
 import { createInsertSchema } from "drizzle-zod";
 import {
   boolean,

@@ -1,3 +1,16 @@
+/**
+ * Registry that runs registered checks and rolls their results up per subsystem.
+ *
+ *   register(check) ──▶ runAll() / runSubsystem(subsystem)
+ *                            │
+ *                            ├──▶ check() raced against timeoutMs (default 5s)
+ *                            │       │              │
+ *                            │     returns       throws ──▶ unhealthy
+ *                            ├──▶ worst status wins: unhealthy > degraded > unknown
+ *                            ├──▶ results cache ──▶ getLastResult / getAllLastResults
+ *                            └──▶ endpoint factories: /health 503 | /ready 503 | /live 200
+ *   nothing in this repo registers a HealthCheck, so runAll() returns []
+ */
 export enum HealthStatus {
   Healthy = "healthy",
   Degraded = "degraded",

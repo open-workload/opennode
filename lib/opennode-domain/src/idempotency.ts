@@ -1,3 +1,14 @@
+/**
+ * Turns a retried submission into one stable run ID, or into a conflict.
+ *
+ *   payload ──▶ canonical JSON (keys sorted) ──▶ FNV-1a ──▶ payloadHash
+ *   actorId + key + payloadHash ──▶ runId, expiresAt = now + 24h
+ *
+ *   existing record ──▶ same actor? same key? still live? same payloadHash?
+ *                       │           │            │              │
+ *                       └── no ─────┴────────────┴────── yes ───┴──▶ replay runId
+ *                                throw IDEMPOTENCY_CONFLICT / EXPIRED
+ */
 import { DomainError } from "./errors";
 
 export const IDEMPOTENCY_HEADER = "Idempotency-Key";

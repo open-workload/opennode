@@ -1,3 +1,15 @@
+/**
+ * Feature-flag overrides and the global kill switch, behind the app.ts guards.
+ *
+ *   GET  /flags ─▶ getAllFlags({ clusterId }) ─▶ { flags }
+ *   POST /flags ─▶ zod body ─▶ applyOverrides ─▶ getAllFlags ─▶ { flags }
+ *        bad body ─▶ 400      FeatureFlagsError ─▶ 400 with its code
+ *
+ *   POST /flags/kill-switch/activate ─▶ zod { reason, activatedBy } ─▶ activateKillSwitch
+ *   POST /flags/kill-switch/deactivate ─▶ deactivateKillSwitch (no body)
+ *        each: increment the matching counter, 409 on FeatureFlagsError, else 500
+ */
+
 import { Router, type IRouter, type Response } from "express";
 import { z } from "zod";
 import { type FlagValue } from "@workspace/feature-flags";

@@ -1,3 +1,13 @@
+/**
+ * Two SignatureScheme implementations. The "deterministic" one is not a signature.
+ *
+ *   secretKey ──▶ deterministic ──▶ FNV-1a over secretKey|message ──▶ hex
+ *                                          │  a hash: keyed by a secret, so
+ *                                          │  nobody else can reproduce or check it
+ *   ballot ─────▶ deterministic.verify ──▶ always true, no check at all
+ *
+ *   secretKey ──▶ ed25519 ──▶ real signature ──▶ verify(pubkey) ──▶ boolean
+ */
 import { sign, verify, getPublicKey, utils } from "@noble/ed25519";
 
 export interface SignatureScheme {

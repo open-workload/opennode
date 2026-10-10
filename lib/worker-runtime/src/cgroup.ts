@@ -1,3 +1,15 @@
+/**
+ * Writes cgroup v2 limit files per attempt, then reaps them. Needs privilege.
+ *
+ *   limits ─▶ format cpu/memory/pids/io ─▶ create(attemptId) ─▶ handle
+ *                                                  │
+ *                                     ensureRoot enables subtree controllers
+ *                                     (cpu, memory, pids; io.max best-effort)
+ *
+ *   handle.enter(pid) ─▶ cgroup.procs ─▶ proc confined
+ *   handle.cleanup() ──▶ cgroup.kill, rmdir x10, then rm -rf as fallback
+ */
+
 import { mkdtemp, writeFile, readFile, rm, mkdir, stat, rmdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

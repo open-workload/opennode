@@ -1,3 +1,14 @@
+/**
+ * One global on/off latch; nothing outside FeatureFlags reads it.
+ *
+ *   activate(reason, by) | deactivate() ──▶ frozen KillSwitchState
+ *   │                                                  │
+ *   └────▶ listeners ──▶ subscriber callbacks
+ *         errors swallowed
+ *
+ * FeatureFlags.isNewExecutionAllowed consults isEnabled(), and only when
+ * that instance set enableKillSwitch. api-server routes toggle it.
+ */
 import { FeatureFlagsError } from "./errors";
 
 export interface KillSwitchState {

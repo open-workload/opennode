@@ -1,3 +1,17 @@
+/**
+ * Read-only cluster views: node inventory, activity feed, dashboard rollup.
+ * Reached only after the auth + same-origin + correlation chain in app.ts.
+ *
+ *   GET /nodes ──────────────▶ nodeStore.listNodes ─▶ ListNodesResponse.parse ─▶ 200
+ *   GET /activity?limit ─────▶ safeParse ─▶ listActivity(limit) ─▶ 200, else 400
+ *   GET /dashboard/summary ──▶ 7 nodeStore reads in parallel; clusterId falls back
+ *                              to getGovernance() when metadata is absent. starting
+ *                              folds into running, timed_out and
+ *                              infrastructure_error fold into failed.
+ *
+ *   Any store throw ─▶ log ─▶ 500 INTERNAL. No route here mutates state.
+ */
+
 import { Router, type IRouter, type Response } from "express";
 import {
   GetDashboardSummaryResponse,

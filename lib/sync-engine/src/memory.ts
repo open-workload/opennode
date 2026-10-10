@@ -1,3 +1,13 @@
+/**
+ * In-memory test doubles for the sync engine's stores and peer source.
+ *
+ *   entries ──▶ EventLogStore ──▶ EventLog read/write during catch-up
+ *   checkpoint ─▶ CheckpointStore ─▶ resume position per cluster
+ *   entries ──▶ PeerLogSource ──▶ roots, chunks, prefix, single entry
+ *
+ * Not durable and not shared across processes: each factory closes over
+ * a fresh array or Map. assertValidPrefix revalidates a chain from zero.
+ */
 import { merkleRoot } from "./hash";
 import { SignedLogEntry, EventLogStore, validateEntryChain } from "./eventLog";
 import { ClusterId } from "@workspace/opennode-domain";

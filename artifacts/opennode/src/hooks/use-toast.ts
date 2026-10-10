@@ -1,3 +1,13 @@
+/**
+ * Module-level toast store: dispatch reduces memoryState, listeners render.
+ *
+ *   toast(props) ──▶ dispatch ──▶ reducer ──▶ memoryState ──▶ listeners
+ *                    ▲                          │                │
+ *       ADD / UPDATE / DISMISS / REMOVE         └── setState ────▶ UI
+ *
+ * DISMISS closes a toast and queues REMOVE after TOAST_REMOVE_DELAY;
+ * useToast re-registers its listener on every state change. TOAST_LIMIT 1.
+ */
 import * as React from 'react';
 import type { ToastActionElement, ToastProps } from '@/components/ui/toast';
 

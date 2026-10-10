@@ -1,3 +1,13 @@
+/**
+ * The rule that gossip is advisory only and can never authorize anything.
+ *
+ *   any gossip-derived value ──▶ asAdvisory(v) ──▶ Advisory<{ trust: "advisory" }>
+ *        │                                                │
+ *   isAdvisoryCategory / assertGossipCategory              ▼
+ *        │  only presence | capacity       denyGossipAuthorization(decision)
+ *        │                                               │ always throws
+ *        └──▶ never reaches ──▶ job-authorization | membership-change | secret-access
+ */
 import { GossipError } from "./errors";
 import { GossipCategory, GossipMessage } from "./messages";
 

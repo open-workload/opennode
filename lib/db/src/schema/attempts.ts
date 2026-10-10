@@ -1,3 +1,14 @@
+/**
+ * One retry attempt of a workload run; child of workload_runs, cascades on delete.
+ *
+ *   workload_run_attempts ──▶ run_id ──▶ workload_runs.id (ON DELETE CASCADE)
+ *        │        │
+ *        │        └──▶ unique (run_id, attempt); attempt > 0
+ *        ├──▶ provider_run_id unique + non-empty; checksum non-empty
+ *        ├──▶ status: run_status enum from ./enums; worker_node_id, request_id
+ *        └──▶ finished_at IS NULL OR finished_at >= started_at
+ *   table ──▶ createInsertSchema ──▶ InsertWorkloadRunAttempt / WorkloadRunAttempt
+ */
 import { createInsertSchema } from "drizzle-zod";
 import { check, index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";

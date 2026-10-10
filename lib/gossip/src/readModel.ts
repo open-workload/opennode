@@ -1,3 +1,16 @@
+/**
+ * Rebuilds named projections from committed ClusterEvents; gossip is not an input.
+ *
+ *   CommittedEventSource ──▶ syncFrom() ──▶ readCommitted(applied, target)
+ *        │                              │
+ *        │                  gap / short batch ──▶ READ_MODEL_GAP
+ *        ▼                              ▼
+ *   applyChecked: event.sequence must equal applied ──▶ each Projection.apply()
+ *        │                              │
+ *   MembershipProjection / JobStateProjection    status(): lag 0 = healthy,
+ *        │                              │    fresh = syncing, else stale
+ *        └──▶ snapshot()      rebuild(events) resets then replays from 0
+ */
 import { ClusterEvent } from "@workspace/opennode-domain";
 import { GossipError } from "./errors";
 

@@ -1,3 +1,15 @@
+/**
+ * Payload shapes for the three membership kinds, and the vote-threshold guard.
+ *
+ *   membership.admission | membership.eviction | membership.leave
+ *        │                               │
+ *        │                 payload: { previousEpoch, newEpoch, subjectId, ... }
+ *        ▼                               ▼
+ *   assertAdmissionPassed / assertEvictionPassed ──▶ threshold(denominator)
+ *        │   yesVotes < threshold ──▶ ADMISSION/EVICTION_THRESHOLD_NOT_MET
+ *        ▼
+ *   leaveMessage() ──▶ "leave|cluster|subject|prevEpoch|newEpoch" ──▶ signed by leaver
+ */
 import {
   admissionThreshold,
   evictionThreshold,

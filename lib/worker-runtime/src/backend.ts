@@ -1,3 +1,17 @@
+/**
+ * Type-only contract: a backend's start(spec) returns a handle, not a result.
+ *
+ *   WorkerSpec ──▶ WorkerBackend.start ──▶ WorkerHandle
+ *                                              │
+ *   starting ──spawn──▶ running ──exit──────▶ finished
+ *      │                    │                   ▲
+ *      └── cancel(reason) ──┴───────────────────┘
+ *
+ *   wait() ────▶ WorkerResult     cleanup() ───▶ CleanupReport
+ *
+ * The lifecycle union also admits pending, cancel_requested, tearing_down.
+ */
+
 import type { WorkerSpec } from "./spec";
 
 export type WorkerLifecycleState =

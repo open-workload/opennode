@@ -1,3 +1,14 @@
+/**
+ * X.509-style cluster membership: frozen epochs, CA-signed certs, CRL, access gate.
+ *
+ *   clusterId + nodeId ──▶ issueMembershipCertificate ──▶ ed25519 ──▶ certificate
+ *   revoked serials ─────▶ createCRL ───────────────────▶ ed25519 ──▶ CRL
+ *
+ *   cert ──▶ verifyMembershipCertificate ──▶ cluster, member, epoch, validity
+ *            │                              CA fingerprint + signature
+ *            │                              CRL signature + serial lookup
+ *            └──▶ throws PeerNetError ──▶ authorizePeerAccess ──▶ allowed | reason
+ */
 import { ClusterId, NodeId, assertClusterId, assertNodeId } from "@workspace/opennode-domain";
 import { PeerNetError } from "./errors";
 import { SignatureScheme, createEd25519Scheme } from "./signatures";

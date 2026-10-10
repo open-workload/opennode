@@ -1,3 +1,14 @@
+/**
+ * Governance proposals over a frozen electorate snapshot. Passage only, no commit.
+ *
+ *   members + epoch ──▶ freeze electorate ──▶ proposal (open, zero votes)
+ *   ballot ──▶ epoch match? voter in electorate? not the subject? already voted?
+ *              │           │            │              └── no ──▶ throw
+ *              └─ yes ────▶ append vote ──▶ yes >= threshold? ──▶ passed : open
+ *
+ * A voluntary-leave proposal is created already passed and takes no ballot.
+ * hasGovernancePassed reports the threshold outcome only; committing is elsewhere.
+ */
 import { DomainError } from "./errors";
 
 export type VoteChoice = "yes" | "no";

@@ -1,3 +1,15 @@
+/**
+ * Requires a Clerk-verified identity. A caller-supplied actor header or the
+ * JWT `azp` claim is never trusted as a user id.
+ *
+ *   req ─▶ getAuth(req) ─┬─ no userId ─▶ 401 UNAUTHORIZED (stop)
+ *                        ├─ throws  ─▶ 401 UNAUTHORIZED (missing Clerk = deploy error)
+ *                        └─ ok ─▶ req.auth { userId, sessionId, actorId, claims }
+ *                                + res.locals.actorId ─▶ next()
+ *
+ *   optionalAuthMiddleware runs the same read but always falls through to next().
+ */
+
 import { getAuth } from "@clerk/express";
 import { type NextFunction, type Request, type Response } from "express";
 

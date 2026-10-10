@@ -1,3 +1,16 @@
+/**
+ * Committed membership: admission, eviction and leave are the only way in or out.
+ *
+ *   commitAdmission / commitEviction / commitLeave  (not leader ──▶ NOT_LEADER)
+ *        ▼
+ *   assertAdmissionPassed (vote threshold) ──▶ createClusterEvent ──▶ signEntry(prevHash)
+ *        ▼
+ *   ConsensusLog.propose ──▶ applyFromLog ──▶ applyMembershipEntry per entry
+ *        │                      ├──▶ epoch must advance by one; save to store
+ *        │                      └──▶ epoch change ──▶ leases.fenceOnEpochChange
+ *        └──▶ reconcilePeer(claim) ──▶ consistent | advanced | behind | diverged
+ *   createWithRaft wires a RaftEventLogStore in as the ConsensusLog
+ */
 import {
   ClusterId,
   ClusterEvent,

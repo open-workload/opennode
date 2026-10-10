@@ -1,3 +1,18 @@
+/**
+ * Membership governance routes: proposals, ballots, and voluntary leave.
+ *
+ *   POST /membership/proposals ─▶ eviction gated by flag (off ─▶ 409) ─▶ open, 24h TTL
+ *   POST .../:id/votes ─▶ sign the canonical ballot (epoch, choice, revision) ─▶ castVote
+ *
+ *   pending ─┬─ threshold met ─▶ passed ─▶ finalizePassed ─▶ committed, epoch++
+ *             ├─ invalidated / rejected ─▶ rejected        └─▶ log, lifecycle, fencing
+ *             └─ TTL elapsed ─▶ expired                        and, for admission,
+ *                                                             a membership credential
+ *
+ *   POST /membership/leave ─▶ leave flag ─▶ count active runs ─▶ epoch++ ─▶ 202 leaving
+ *   DomainError ─▶ 404 unknown | 400 invalid | 409 conflict; anything else ─▶ 500
+ */
+
 import { randomUUID } from "node:crypto";
 import { Router, type IRouter, type Response } from "express";
 import {
