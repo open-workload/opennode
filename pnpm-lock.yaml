@@ -128,6 +128,9 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
+      '@workspace/failure-injection':
+        specifier: workspace:*
+        version: link:../../lib/failure-injection
       '@workspace/feature-flags':
         specifier: workspace:*
         version: link:../../lib/feature-flags
@@ -621,6 +624,9 @@ importers:
 
   lib/content-store:
     dependencies:
+      '@workspace/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@workspace/opennode-domain':
         specifier: workspace:*
         version: link:../opennode-domain
@@ -692,6 +698,9 @@ importers:
 
   lib/membership-log:
     dependencies:
+      '@workspace/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@workspace/opennode-domain':
         specifier: workspace:*
         version: link:../opennode-domain
@@ -714,6 +723,9 @@ importers:
       '@workspace/feature-flags':
         specifier: workspace:*
         version: link:../feature-flags
+      '@workspace/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@workspace/opennode-domain':
         specifier: workspace:*
         version: link:../opennode-domain
@@ -833,6 +845,9 @@ importers:
 
   lib/raft-log:
     dependencies:
+      '@workspace/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@workspace/opennode-domain':
         specifier: workspace:*
         version: link:../opennode-domain
@@ -868,6 +883,9 @@ importers:
 
   lib/secret-broker:
     dependencies:
+      '@workspace/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@workspace/opennode-domain':
         specifier: workspace:*
         version: link:../opennode-domain
@@ -875,6 +893,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.6
+      '@workspace/peernet':
+        specifier: workspace:*
+        version: link:../peernet
 
   lib/sync-engine:
     dependencies:
@@ -907,6 +928,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.6
+      '@workspace/peernet':
+        specifier: workspace:*
+        version: link:../peernet
 
   scripts:
     dependencies:

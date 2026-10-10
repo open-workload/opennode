@@ -19,6 +19,7 @@
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "@workspace/feature-flags": "workspace:*",
+    "@workspace/failure-injection": "workspace:*",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "commander": "^12.1.0",
