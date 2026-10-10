@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { renderMetrics } from "@workspace/observability";
 import { InMemoryChunkStore } from "./store";
 import { pruneExpiredChunks, DEFAULT_CHUNK_RETENTION_POLICY } from "./retention";
+import type { ListableChunkStore } from "./store";
 import type { StoredChunk } from "./chunk";
 
 function makeChunk(address: string, timestamp: number): StoredChunk {
@@ -39,5 +41,23 @@ describe("chunk retention", () => {
     expect(await store.has(oldAddress)).toBe(false);
     expect(await store.has(freshAddress)).toBe(true);
     expect(store.count()).toBe(1);
+  });
+
+  it("emits content_store.orphan_cleanup_errors when pruning a chunk fails", async () => {
+    const now = 1_000_000_000_000;
+    const failingStore: ListableChunkStore = {
+      put: async () => undefined,
+      get: async () => undefined,
+      has: async () => false,
+      delete: async () => {
+        throw new Error("disk full");
+      },
+      list: async () => [makeChunk("old-chunk", now - DEFAULT_CHUNK_RETENTION_POLICY.ttlMs - 1)],
+      count: () => 0,
+    };
+
+    await expect(pruneExpiredChunks(failingStore, { now })).rejects.toThrow("disk full");
+    expect(renderMetrics()).toContain("# TYPE content_store.orphan_cleanup_errors counter");
+    expect(renderMetrics()).toContain("content_store.orphan_cleanup_errors 1");
   });
 });

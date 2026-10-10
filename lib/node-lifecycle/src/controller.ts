@@ -12,6 +12,8 @@
  * Six separate injected steps, not one pipeline: leave drains and publishes
  * but never revokes credentials or quarantines capacity.
  */
+import { metricsRegistry } from "@workspace/observability";
+
 export type LifecycleCause = "voluntary-leave" | "eviction";
 
 export interface AssignmentGate {
@@ -251,6 +253,7 @@ export class NodeLifecycleController {
   }): Promise<NodeLifecycleReport> {
     this.gate.stopNewAssignments("eviction");
     this.credentials.revoke(input.subjectId, "eviction");
+    metricsRegistry.increment("membership.key_revocation_pending");
     const leasesInvalidated = await this.leases.invalidate(
       input.subjectId,
       "eviction",
