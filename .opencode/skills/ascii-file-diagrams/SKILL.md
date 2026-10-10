@@ -105,9 +105,39 @@ box-drawing characters. Expect false positives on short files and false
 negatives where a diagram is worded differently. **Read the file before
 concluding anything** — this command tells you where to look, not what is true.
 
+## Sizing the work before starting it
+
+Do not trust the heuristic's count as the backlog. Classify first, so the
+sweep has a real denominator and the trivial files are excluded deliberately
+rather than by accident:
+
+- **Barrels** — re-export files with no executable body. Exempt under the rule.
+- **Config** — `*.config.ts` and build wiring. Exempt; there is no behaviour to
+  orient a reader toward.
+- **Small** — under ~45 lines. Judgment call, and usually not worth a diagram;
+  the file is already readable end to end.
+- **Substantive** — the real backlog. These are worth a diagram.
+
+Re-derive the classification when starting a sweep rather than trusting a number
+recorded here — the tree moves, and a stale denominator is how a sweep either
+misses files or wastes effort on ones that never needed it.
+
 ## Boundary
 
 Adding diagrams to an existing file is a change to that file's contract with its
 readers, so it belongs in its own slice or with the logic change that motivated
 it. Do not sweep the whole tree in a commit that also changes behaviour — the
 diff becomes unreviewable and the real change gets lost in it.
+
+**Check for concurrent writers before a sweep.** A sweep touches many files at
+once, so it collides with anyone else editing them — and a diagram written into
+a file whose logic is mid-rewrite is stale on arrival, which is the one defect
+this rule exists to prevent:
+
+```bash
+git status --short   # any dirty .ts files are someone else's active work
+```
+
+If files are dirty, do not write diagrams into them. Land the scoping now and run
+the sweep when the tree is quiet — a correct diagram later beats a stale one
+now.
