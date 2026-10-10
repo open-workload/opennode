@@ -5,6 +5,7 @@ import type { GuardResult } from './guard';
 import { checkBareJoin } from './join-encoding';
 import { checkMetricProducers } from './metric-producers';
 import { checkUnusedSymbols } from './unused-symbols';
+import { checkWorkerKind } from './worker-kind';
 
 export function runCiChecks(root: string): GuardResult[] {
   return [
@@ -12,6 +13,7 @@ export function runCiChecks(root: string): GuardResult[] {
     checkBareJoin(root),
     checkInjectorPassThrough(root),
     checkMetricProducers(root),
+    checkWorkerKind(root),
   ];
 }
 
