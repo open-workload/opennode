@@ -3,10 +3,16 @@ import { fileURLToPath } from 'node:url';
 import { checkInjectorPassThrough } from './fault-injection';
 import type { GuardResult } from './guard';
 import { checkBareJoin } from './join-encoding';
+import { checkMetricProducers } from './metric-producers';
 import { checkUnusedSymbols } from './unused-symbols';
 
 export function runCiChecks(root: string): GuardResult[] {
-  return [checkUnusedSymbols(root), checkBareJoin(root), checkInjectorPassThrough(root)];
+  return [
+    checkUnusedSymbols(root),
+    checkBareJoin(root),
+    checkInjectorPassThrough(root),
+    checkMetricProducers(root),
+  ];
 }
 
 export function formatCiChecks(results: readonly GuardResult[]): {

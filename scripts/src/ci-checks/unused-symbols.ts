@@ -139,10 +139,7 @@ export const REQUIRED_SYMBOLS: readonly RequiredSymbol[] = [
  * Tracking ids: PROV-03 (unused mechanism) is the governing requirement; the
  * named requirement in each comment is the specific gap that keeps it unwired.
  */
-export const KNOWN_UNWIRED_ALLOWLIST: readonly string[] = [
-  'PROV-03:createDefaultHarness', // OPS-07
-  'PROV-03:registerAllFaultPoints', // OPS-07
-];
+export const KNOWN_UNWIRED_ALLOWLIST: readonly string[] = [];
 
 export function checkUnusedSymbols(root: string): GuardResult {
   const files = walkSourceFiles(root, (path) => path.startsWith('scripts/src/ci-checks/'));
