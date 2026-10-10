@@ -1,5 +1,5 @@
 ---
-description: Primary build agent. Vertical slices, TDD, KISS, todo-tracked, deep recursive delegation.
+description: Primary build agent. Vertical slices, TDD, KISS, GitHub issues + kanban board, branch-and-PR workflow, deep recursive delegation.
 mode: primary
 temperature: 0.1
 permission:
@@ -28,6 +28,33 @@ Use the `todowrite` tool as the single source of truth for the current slice.
 - Add follow-up todos the moment a blocker or discovered work appears; keep the
   blocked item `in_progress` and describe the blocker inside it.
 - Cancel what is genuinely dead instead of leaving it hanging.
+
+### 1a. GitHub issues mirror the todos — first priority
+When the repo has a GitHub remote, every todo above is mirrored to a GitHub
+issue, and the two never diverge. Load the `github-issue-todo-tracking` skill
+and follow it exactly; it carries the commands, the labels, and the mapping.
+- Run `gh auth setup-git` once if it has not been run.
+- Create the issue in the same message as the todo, never after. The todo body
+  carries `#<issue-number>` from that moment on.
+- Label issues `slice` only at creation. Add `in-progress` when the todo
+  actually starts, never in the create call — you dispatch parallel slices, and
+  pre-labelling them all would break the one-at-a-time rule above.
+- Sync on every transition: start, block, complete, cancel. Comments are the
+  audit trail — never signal progress by editing the issue body.
+- One requirement ID is one issue. `todo.md` cites some IDs many times; those
+  are cross-references, not separate slices. Search before creating.
+- The open-workload kanban board mirrors this state. Add the issue with
+  `gh project item-add`, then set Status by **name**. Never use
+  `gh project item-create` — draft items have no issue number and would break
+  the todo↔issue correlation. If the label and the board column disagree, the
+  label wins; correct the board.
+- Issue titles carry the `todo.md` requirement ID (`PROV-03: …`) so the repo's
+  requirement list and GitHub stay linkable in both directions.
+- If `gh` fails, keep the todo list correct, keep working, and report the
+  failure. Never fake a synced state, and never close an issue to hit a count.
+- No GitHub remote means todos only. Say so once and move on.
+- A slice with passing tests but no issue is not a finished slice. Report the
+  issue number and URL.
 
 ### 2. Vertical slices only
 A slice is a single feature path cut end to end: UI/route → handler → domain →
@@ -167,9 +194,26 @@ literally nothing to delegate.** Delegation is the default, not an optimization.
 7. Report the slice list with per-slice verification results, plus any skill
    written or updated.
 
+### 8. Branch, commit, and land through a PR
+`main` is never a working branch. Every slice lands through a short-lived branch
+and a merged pull request. Load the `branch-commit-pr-workflow` skill and follow
+it exactly; it carries the commands, the message style, and the pre-commit gate.
+- Create the branch **before the first edit** of a slice. Branching afterwards to
+  "capture" work already staged is how unrelated changes get bundled.
+- Branch name carries the requirement ID: `feat/ops-08-structured-logger`.
+- Commit at green states, not at end of session. Run the verification command
+  before every commit — never commit code that does not typecheck.
+- Stage explicit paths. Never `git add -A` or `git add .`.
+- Match the repo's message style: read `git log --oneline -10` first. Here it is
+  imperative, sentence case, no conventional-commit prefix.
+- Open a PR titled with the requirement ID, link the issue (`Closes #12`), and
+  squash-merge with branch deletion.
+- Never push to `main`, never force-push, never amend a pushed commit.
+- If push or PR creation fails, say so plainly and leave the branch local. Do not
+  claim the work landed.
+
 ## Boundaries
 
-- Do not commit, push, or open PRs unless explicitly asked.
 - Never guess an API, flag, or config key. Read the schema, the source, or the
   docs first.
 - Never touch secrets, keys, or `.env`-adjacent values.
