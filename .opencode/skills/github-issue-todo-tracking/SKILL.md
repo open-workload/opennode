@@ -129,11 +129,28 @@ The issue title carries the same ID so `todo.md` and GitHub stay linkable:
 - Title: `PROV-03: guard releases on typecheck`
 - Body opens with `Source: todo.md § <section>` and links back.
 
-**One ID is one issue, not one per mention.** `todo.md` cites some IDs many
-times — `NET-01` and `SYNC-01` appear 7 times each. Those mentions are
-cross-references to a single requirement, not seven slices. Before creating an
-issue, search for an existing one with that title prefix; if one exists, reuse
-it and comment to link the new context rather than opening a second issue.
+**One requirement is not one issue.** `todo.md` cites some IDs many times —
+`NET-01` and `SYNC-01` appear 7 times each. Those mentions are cross-references
+to a single requirement, not seven slices, and not seven issues. Before creating
+an issue, search for an existing one on the same *defect*; if it exists, reuse it
+and comment rather than opening a second issue.
+
+**But distinct defects under one ID get distinct issues.** A requirement like
+`SEC-01` can be violated in several unrelated places, each needing its own fix,
+its own PR, and its own verification. Merging them into one issue recreates the
+original problem — a single issue that never closes because three unrelated
+defects block it. This repo currently has three open `SEC-01` issues and two
+`NET-01` issues, all genuinely different defects.
+
+So the ID prefix **groups** issues; it does not identify one. Consequences:
+
+- Correlation must use the issue number recorded in the todo body, not a title
+  search. The search is recovery only, and it is ambiguous by design.
+- When recovering from a search, match the **full title**, not just the ID
+  prefix. `in:title SEC-01` matches three issues; only the descriptor after the
+  colon distinguishes them.
+- If a search is genuinely ambiguous, report it and ask. Do not guess which
+  issue a todo belongs to.
 
 ## The kanban board (projects)
 

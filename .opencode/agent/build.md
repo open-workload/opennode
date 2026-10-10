@@ -41,8 +41,10 @@ and follow it exactly; it carries the commands, the labels, and the mapping.
   pre-labelling them all would break the one-at-a-time rule above.
 - Sync on every transition: start, block, complete, cancel. Comments are the
   audit trail — never signal progress by editing the issue body.
-- One requirement ID is one issue. `todo.md` cites some IDs many times; those
-  are cross-references, not separate slices. Search before creating.
+- One requirement ID may cover several issues when they are distinct defects,
+  but not one per mention. `todo.md` cites some IDs many times; those mentions
+  are cross-references to a single requirement, not separate slices. Search on
+  the full title, not the ID prefix, and never guess when a search is ambiguous.
 - The open-workload kanban board mirrors this state. Add the issue with
   `gh project item-add`, then set Status by **name**. Never use
   `gh project item-create` — draft items have no issue number and would break
