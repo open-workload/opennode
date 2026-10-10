@@ -153,7 +153,53 @@ general knowledge is noise — prefer fixing the repo or writing a doc instead.
 Keep one skill to one procedure. Never edit a skill you did not create without
 saying so.
 
-### 7. Deep, recursive delegation — non-negotiable
+### 7. Async dispatch goes to subagents only
+Parallel work is dispatched through the `task` tool to subagents, and only that.
+- **Never** start a brand new opencode session, CLI process, or detached agent
+  to do repo work. Subagents are the only concurrency mechanism.
+- A second session has its own context, its own HEAD, and no idea what you are
+  mid-slice on. It will `git checkout`, run `tsc --build` against shared
+  `.tsbuildinfo`, and land commits you never reviewed. Treat any such session as
+  a correctness hazard, not a speedup.
+- Before starting work, confirm you are alone: `git status --short` and
+  `git log --oneline -3`. If files you did not write are dirty, or HEAD moved
+  since you started, **stop and report it** before writing anything.
+- Serialize anything that touches shared state: the git index, `main`, the
+  branch pointer, `.tsbuildinfo`, the database. Parallelize only work with
+  genuinely disjoint file sets.
+
+### 8. Model choice is free
+You may pick or switch any freely available LLM model for any task at any time.
+- Choose per task by fit: a cheap fast model for mechanical edits and lookups,
+  a stronger model for design, security, consensus, and anything subtle.
+- Switching models is a means, not a goal. The constraint is output quality:
+  **the result must not introduce bugs or inconsistencies.**
+- Consistency outranks capability. A slice's modules, naming, error handling,
+  and public shapes must match the surrounding code regardless of which model
+  wrote which part. If two agents touch one slice, they must agree — reconcile
+  by re-reading the actual files, not from memory of what you intended.
+- Never trade away a verification step to save time on a cheaper model. If a
+  task's output is not verified, model choice is irrelevant.
+
+### 9. Every code file carries an ASCII diagram
+Each source file opens with a commented ASCII diagram of what the file does.
+- The diagram is a header comment block, so it stays valid syntax and never
+  affects behaviour. Match the file's existing comment style.
+- It must show the module's role and its shape: the inputs on one side, the
+  outputs on the other, and the path between them. For an orchestrator or
+  state machine, the states and the transitions between them. For a leaf
+  helper, its contract and what it guards.
+- Keep it short enough to read — the point is orientation, not art. Roughly a
+  dozen lines or fewer.
+- **Update it in the same change as the logic.** A diagram that describes
+  behaviour the file no longer has is worse than none, because it is trusted.
+  If a change alters what the file does, what it consumes, or what it produces,
+  the diagram is part of that change and is not optional.
+- Test files and generated files are exempt: generated code gets its diagram
+  from the generator, and a test's name and assertions already document it.
+  Type-only re-export barrels may omit it.
+
+### 10. Deep, recursive delegation — non-negotiable
 You are a root, not a leaf. **You do not write code yourself unless there is
 literally nothing to delegate.** Delegation is the default, not an optimization.
 
@@ -185,16 +231,18 @@ literally nothing to delegate.** Delegation is the default, not an optimization.
 1. Restate the request as a slice list. Confirm the todo list.
 2. Scan and load every relevant skill before touching code. If the work earned a
    new one, note it as a todo.
-3. Delegate exploration to find the existing patterns, the test setup, and what
+3. Confirm you are alone in the repo (`git status --short`, `git log -3`). Report
+   any foreign change before writing.
+4. Delegate exploration to find the existing patterns, the test setup, and what
    is already installed or importable that could carry the slice.
-4. Dispatch the slices in parallel where they are independent.
-5. For each slice, in order: todo → test (red) → code (green) → refactor → verify.
-6. Run the project's full verification (tests, typecheck, lint) before
+5. Dispatch the slices in parallel where they are independent, as subagents only.
+6. For each slice, in order: todo → test (red) → code (green) → refactor → verify.
+7. Run the project's full verification (tests, typecheck, check:ci) before
    reporting done.
-7. Report the slice list with per-slice verification results, plus any skill
+8. Report the slice list with per-slice verification results, plus any skill
    written or updated.
 
-### 8. Branch, commit, and land through a PR
+### 11. Branch, commit, and land through a PR
 `main` is never a working branch. Every slice lands through a short-lived branch
 and a merged pull request. Load the `branch-commit-pr-workflow` skill and follow
 it exactly; it carries the commands, the message style, and the pre-commit gate.
@@ -203,7 +251,8 @@ it exactly; it carries the commands, the message style, and the pre-commit gate.
 - Branch name carries the requirement ID: `feat/ops-08-structured-logger`.
 - Commit at green states, not at end of session. Run the verification command
   before every commit — never commit code that does not typecheck.
-- Stage explicit paths. Never `git add -A` or `git add .`.
+- Stage explicit paths. Never `git add -A` or `git add .`. If the working tree
+  holds changes you did not write, leave them alone and say so.
 - Match the repo's message style: read `git log --oneline -10` first. Here it is
   imperative, sentence case, no conventional-commit prefix.
 - Open a PR titled with the requirement ID, link the issue (`Closes #12`), and
