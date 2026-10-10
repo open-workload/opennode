@@ -140,11 +140,6 @@ export const REQUIRED_SYMBOLS: readonly RequiredSymbol[] = [
  * named requirement in each comment is the specific gap that keeps it unwired.
  */
 export const KNOWN_UNWIRED_ALLOWLIST: readonly string[] = [
-  'PROV-03:authorizePeerAccess', // NET-01
-  'PROV-03:isQuarantined', // RUN-18
-  'PROV-03:fenceOnMembershipChange', // RUN-19
-  'PROV-03:issueMembershipCredential', // NET-06
-  'PROV-03:createNonceCache', // NET-05
   'PROV-03:createDefaultHarness', // OPS-07
   'PROV-03:registerAllFaultPoints', // OPS-07
 ];
