@@ -7,7 +7,8 @@
     "hello": "tsx ./src/hello.ts",
     "check:ci": "tsx ./src/ci-checks/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "replit-feasibility": "tsx ./src/replit-feasibility.ts"
+    "replit-feasibility": "tsx ./src/replit-feasibility.ts",
+    "rootless:install": "tsx ./src/rootless/install.ts"
   },
   "dependencies": {
     "@workspace/opennode-domain": "workspace:*",

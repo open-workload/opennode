@@ -1,6 +1,6 @@
 import { DomainError } from "./errors";
 import { createNodeId, NodeId } from "./schemas";
-import { clusterNodesTable } from "@workspace/db";
+import { clusterNodesTable, localNodeIdentityTable } from "@workspace/db";
 import { db } from "@workspace/db";
 
 export interface StoredNodeIdentity {
@@ -128,6 +128,17 @@ async function persistIdentityToDb(nodeId: string): Promise<void> {
       isLocal: true,
     })
     .onConflictDoNothing({ target: [clusterNodesTable.id] });
+  const existing = await db.select().from(localNodeIdentityTable).limit(1);
+  if (existing.length > 0 && existing[0].nodeId !== nodeId) {
+    throw new DomainError(
+      "IDENTITY_COLLISION",
+      `Stored local node identity ${existing[0].nodeId} does not match the derived Node ID ${nodeId}; refusing to start on an identity collision.`,
+    );
+  }
+  await db
+    .insert(localNodeIdentityTable)
+    .values({ singleton: true, nodeId })
+    .onConflictDoNothing({ target: [localNodeIdentityTable.singleton] });
 }
 
 function hashSeed(input: string, seed: number, prime: number): string {

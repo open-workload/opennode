@@ -128,11 +128,6 @@ export const REQUIRED_SYMBOLS: readonly RequiredSymbol[] = [
     'lib/failure-injection/src/registry.ts',
     /\bregisterAllFaultPoints\s*\(/,
   ),
-  required(
-    'setFeatureFlagsInstance',
-    'artifacts/api-server/src/routes/flags.ts',
-    /\bsetFeatureFlagsInstance\s*\(/,
-  ),
 ];
 
 /**
@@ -145,25 +140,13 @@ export const REQUIRED_SYMBOLS: readonly RequiredSymbol[] = [
  * named requirement in each comment is the specific gap that keeps it unwired.
  */
 export const KNOWN_UNWIRED_ALLOWLIST: readonly string[] = [
-  'PROV-03:runCatchUp', // SYNC-05
-  'PROV-03:MembershipService.reconcile', // SYNC-10
-  'PROV-03:MembershipLog.reconcilePeer', // SYNC-10
   'PROV-03:authorizePeerAccess', // NET-01
   'PROV-03:isQuarantined', // RUN-18
   'PROV-03:fenceOnMembershipChange', // RUN-19
   'PROV-03:issueMembershipCredential', // NET-06
-  'PROV-03:ensureNodeIdentity', // NET-02
-  'PROV-03:assertNoNodeIdCollision', // NET-02
-  'PROV-03:isCommittedLeaseUsable', // RUN-19
-  'PROV-03:compareFencingTokens', // RUN-19
-  'PROV-03:isFreshFencingToken', // RUN-19
-  'PROV-03:LeaseRegistry.get', // RUN-19
-  'PROV-03:LeaseRegistry.list', // RUN-19
-  'PROV-03:ChunkStore.delete', // EXEC-17
   'PROV-03:createNonceCache', // NET-05
   'PROV-03:createDefaultHarness', // OPS-07
   'PROV-03:registerAllFaultPoints', // OPS-07
-  'PROV-03:setFeatureFlagsInstance', // OPS-13
 ];
 
 export function checkUnusedSymbols(root: string): GuardResult {

@@ -59,7 +59,7 @@ export class FeatureFlags {
     });
   }
 
-  private applyOverrides(flags: Record<string, FlagValue>): void {
+  applyOverrides(flags: Record<string, FlagValue>): void {
     for (const [key, value] of Object.entries(flags)) {
       const def = this.registry.getDefinition(key);
       if (def) {

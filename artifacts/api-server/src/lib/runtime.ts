@@ -1,8 +1,10 @@
-import { DrizzleNodeStore } from "@workspace/node-store";
+import { randomBytes } from "node:crypto";
+import { DrizzleNodeStore, NodeStoreIdentityKeystore } from "@workspace/node-store";
 import {
   MembershipService,
   createClusterId,
-  deriveNodeIdFromSecretKey,
+  ensureNodeIdentity,
+  assertNoNodeIdCollision,
 } from "@workspace/opennode-domain";
 import {
   EventLog,
@@ -164,6 +166,7 @@ export async function getRunCoordinator(): Promise<RunCoordinator> {
     eventLog: g.eventLog,
     signer: g.hsmSigner,
     membershipLog: g.membershipLog,
+    nodeStore,
     store: createInMemoryRunLedgerStore(),
     quotas: RUN_QUOTAS,
     capabilities: [
@@ -193,10 +196,20 @@ async function countActiveRuns(): Promise<number> {
 }
 
 async function createGovernance(): Promise<GovernanceRuntime> {
-  const localNodeId = await nodeStore.getLocalNodeId();
   const clusterId = createClusterId(process.env.OPENNODE_CLUSTER_ID ?? "local-cluster");
-  const localSecretKey = process.env.OPENNODE_LOCAL_SECRET_KEY ?? "opennode-local-dev-secret";
-  const signerNodeId = deriveNodeIdFromSecretKey(localSecretKey);
+  const keystore = new NodeStoreIdentityKeystore();
+  const identity = await ensureNodeIdentity(keystore, () => {
+    const provided = process.env.OPENNODE_LOCAL_SECRET_KEY;
+    return provided && provided.trim().length > 0 ? provided : randomBytes(32).toString("hex");
+  });
+  const stored = keystore.load();
+  if (stored === undefined) {
+    throw new Error("Node identity keystore was not populated during startup.");
+  }
+  const localNodeId = identity.nodeId.value;
+  const localSecretKey = stored.secretKey;
+  const signerNodeId = localNodeId;
+  assertNoNodeIdCollision(await nodeStore.listNodeIdentities());
   const scheme = createDeterministicSignatureScheme();
   const hsmSigner = createHmacSigner(signerNodeId, localSecretKey);
   const eventLog = new EventLog(

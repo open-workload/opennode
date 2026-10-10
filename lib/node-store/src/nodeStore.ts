@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { and, desc, eq, lt, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, lt, sql, type SQL } from "drizzle-orm";
 import {
   activityEventsTable,
   auditEventsTable,
@@ -17,7 +17,10 @@ import {
   runLogEntriesTable,
   workloadRunAttemptsTable,
   workloadRunsTable,
+  type ActivityEvent,
   type AuditEvent,
+  type ClusterMetadata,
+  type ClusterNode,
   type WorkloadRun,
   type WorkloadRunAttempt,
   type RunLogEntry,
@@ -26,6 +29,7 @@ import {
   createArbitraryContainerWorkload,
   createBuiltInDiagnosticWorkload,
   createRun,
+  type StoredNodeIdentity,
 } from "@workspace/opennode-domain";
 import { NodeStoreError } from "./errors";
 import { logEntryChecksum, requestFingerprint, sha256Hex, stableStringify } from "./checksum";
@@ -87,6 +91,11 @@ export interface NodeStore {
   submitRun(cmd: SubmitRunCommand): Promise<{ run: WorkloadRun; created: boolean }>;
   getRun(runId: string): Promise<WorkloadRun | null>;
   listRuns(opts: { limit: number; cursor?: string; status?: string }): Promise<RunListPage>;
+  listNodes(): Promise<ClusterNode[]>;
+  listActivity(limit: number): Promise<ActivityEvent[]>;
+  getClusterMetadata(): Promise<ClusterMetadata | null>;
+  countPendingProposals(): Promise<number>;
+  countRunsByStatus(): Promise<Record<string, number>>;
   requestCancel(runId: string, requestId?: string): Promise<WorkloadRun>;
   markRunTerminal(runId: string, status: WorkloadRun["status"], failureReason?: string | null, requestId?: string): Promise<WorkloadRun>;
   setRunRunning(runId: string, workerNodeId: string, requestId?: string): Promise<WorkloadRun>;
@@ -96,6 +105,7 @@ export interface NodeStore {
   transitionAttempt(attemptId: string, status: WorkloadRunAttempt["status"], opts?: { errorReason?: string; requestId?: string }): Promise<WorkloadRunAttempt>;
   recordAudit(input: AuditInput): Promise<AuditEvent>;
   getLocalNodeId(): Promise<string>;
+  listNodeIdentities(): Promise<StoredNodeIdentity[]>;
   verifyRunLogIntegrity(runId: string): Promise<boolean>;
   backupToFile(path: string): Promise<BackupManifest>;
   restoreFromFile(path: string): Promise<BackupManifest>;
@@ -195,6 +205,43 @@ export class DrizzleNodeStore implements NodeStore {
     const items = rows.slice(0, opts.limit);
     const nextCursor = rows.length > opts.limit && items.length > 0 ? items[items.length - 1].createdAt.toISOString() : null;
     return { items, nextCursor };
+  }
+
+  async listNodes(): Promise<ClusterNode[]> {
+    return db.select().from(clusterNodesTable).orderBy(asc(clusterNodesTable.name));
+  }
+
+  async listActivity(limit: number): Promise<ActivityEvent[]> {
+    return db
+      .select()
+      .from(activityEventsTable)
+      .orderBy(desc(activityEventsTable.createdAt))
+      .limit(limit);
+  }
+
+  async getClusterMetadata(): Promise<ClusterMetadata | null> {
+    const rows = await db.select().from(clusterMetadataTable).limit(1);
+    return rows[0] ?? null;
+  }
+
+  async countPendingProposals(): Promise<number> {
+    const rows = await db
+      .select()
+      .from(membershipProposalsTable)
+      .where(eq(membershipProposalsTable.status, "pending"));
+    return rows.length;
+  }
+
+  async countRunsByStatus(): Promise<Record<string, number>> {
+    const rows = await db
+      .select({ status: workloadRunsTable.status, count: sql<number>`count(*)::int` })
+      .from(workloadRunsTable)
+      .groupBy(workloadRunsTable.status);
+    const counts: Record<string, number> = {};
+    for (const row of rows) {
+      counts[row.status] = row.count;
+    }
+    return counts;
   }
 
   async requestCancel(runId: string, requestId?: string): Promise<WorkloadRun> {
@@ -336,6 +383,13 @@ export class DrizzleNodeStore implements NodeStore {
   async getLocalNodeId(): Promise<string> {
     const rows = await db.select().from(localNodeIdentityTable).limit(1);
     return rows[0]?.nodeId ?? "local";
+  }
+
+  async listNodeIdentities(): Promise<StoredNodeIdentity[]> {
+    const rows = await db
+      .select({ nodeId: clusterNodesTable.id, publicKey: clusterNodesTable.publicKey })
+      .from(clusterNodesTable);
+    return rows.map((row) => ({ nodeId: row.nodeId, secretKey: row.publicKey ?? row.nodeId }));
   }
 
   async verifyRunLogIntegrity(runId: string): Promise<boolean> {

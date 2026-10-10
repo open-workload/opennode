@@ -1,13 +1,12 @@
 import { Router, type IRouter, type Response } from "express";
 import { z } from "zod";
-import { featureFlags, FeatureFlags, type FlagValue } from "@workspace/feature-flags";
+import { type FlagValue } from "@workspace/feature-flags";
 import { metricsRegistry } from "@workspace/observability";
 import { requestId, actorId } from "../middlewares/correlation";
 import { logger } from "../lib/logger";
+import { featureFlags } from "../lib/runtime";
 
 const router: IRouter = Router();
-
-let featureFlagsInstance: FeatureFlags = featureFlags;
 
 const flagValueSchema = z.union([z.boolean(), z.number(), z.string(), z.record(z.unknown())]);
 
@@ -33,15 +32,11 @@ const KillSwitchResponse = z.object({
   }),
 });
 
-export function setFeatureFlagsInstance(instance: FeatureFlags): void {
-  featureFlagsInstance = instance;
-}
-
 router.get("/flags", (_req, res) => {
   const rid = requestId(res);
   try {
     const context = { clusterId: process.env.OPENNODE_CLUSTER_ID ?? "local-cluster" };
-    const flags = featureFlagsInstance.getAllFlags(context);
+    const flags = featureFlags.getAllFlags(context);
     res.json(FeatureFlagsResponse.parse({ flags }));
     logger.debug({ requestId: rid }, "flags retrieved");
   } catch (err) {
@@ -58,13 +53,9 @@ router.post("/flags", async (req, res) => {
     return;
   }
   try {
-    const newInstance = new FeatureFlags({
-      enableKillSwitch: featureFlagsInstance.getKillSwitch().getState().enabled,
-      flags: parsed.data.flags as Record<string, FlagValue> | undefined,
-    });
-    setFeatureFlagsInstance(newInstance);
+    featureFlags.applyOverrides((parsed.data.flags ?? {}) as Record<string, FlagValue>);
     const context = { clusterId: process.env.OPENNODE_CLUSTER_ID ?? "local-cluster" };
-    const flags = newInstance.getAllFlags(context);
+    const flags = featureFlags.getAllFlags(context);
     res.json(FeatureFlagsResponse.parse({ flags }));
     logger.info({ requestId: rid, overrides: Object.keys(parsed.data.flags ?? {}) }, "flags updated");
   } catch (err) {
@@ -85,7 +76,7 @@ router.post("/flags/kill-switch/activate", async (req, res) => {
     return;
   }
   try {
-    const state = featureFlagsInstance.activateKillSwitch(parsed.data.reason, parsed.data.activatedBy);
+    const state = featureFlags.activateKillSwitch(parsed.data.reason, parsed.data.activatedBy);
     metricsRegistry.increment("feature_flag_kill_switch_activations_total");
     res.json(KillSwitchResponse.parse({ state }));
     logger.warn({ requestId: rid, reason: parsed.data.reason, activatedBy: parsed.data.activatedBy }, "kill switch activated");
@@ -102,7 +93,7 @@ router.post("/flags/kill-switch/activate", async (req, res) => {
 router.post("/flags/kill-switch/deactivate", async (_req, res) => {
   const rid = requestId(res);
   try {
-    const state = featureFlagsInstance.deactivateKillSwitch();
+    const state = featureFlags.deactivateKillSwitch();
     metricsRegistry.increment("feature_flag_kill_switch_deactivations_total");
     res.json(KillSwitchResponse.parse({ state }));
     logger.info({ requestId: rid }, "kill switch deactivated");

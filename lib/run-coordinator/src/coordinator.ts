@@ -29,6 +29,9 @@ import {
   LeaseRenewalRequest,
   validateLeaseRenewalRequest,
   LeaseRenewalResult,
+  isCommittedLeaseUsable,
+  compareFencingTokens,
+  isFreshFencingToken,
 } from "./leases";
 import {
   RUN_ATTEMPT_FENCED_KIND,
@@ -215,6 +218,48 @@ function isTerminalRunState(state: RunStatus): boolean {
     state === "interrupted" ||
     state === "needs_attention"
   );
+}
+
+/** Reconstruct the committed lease carried by an attempt record. Returns
+ *  undefined when the attempt never held a fully committed lease. */
+function toCommittedLease(attempt: AttemptRecord): CommittedLease | undefined {
+  if (
+    attempt.leaseId === null ||
+    attempt.workerNodeId === null ||
+    attempt.membershipEpoch === null ||
+    attempt.expiresAt === null ||
+    attempt.fencingToken === null ||
+    attempt.grantedAt === null
+  ) {
+    return undefined;
+  }
+  return {
+    leaseId: attempt.leaseId,
+    runId: attempt.runId,
+    attempt: attempt.attempt,
+    workerNodeId: attempt.workerNodeId,
+    membershipEpoch: attempt.membershipEpoch,
+    expiresAt: attempt.expiresAt,
+    fencingToken: attempt.fencingToken,
+    grantedAt: attempt.grantedAt,
+    renewedAt: attempt.renewedAt ?? attempt.grantedAt,
+    renewCount: attempt.renewCount,
+  };
+}
+
+/** Distinguish an older (stale) token from a token minted for another lease. */
+function describeFencingTokenMismatch(
+  presented: number,
+  committed: CommittedLease,
+  context: string,
+): string {
+  const order = compareFencingTokens(
+    { ...committed, fencingToken: presented },
+    committed,
+  );
+  return order < 0
+    ? `${context} carries a stale fencing token.`
+    : `${context} carries a fencing token for a different lease.`;
 }
 
 export class RunCoordinator {
@@ -738,23 +783,41 @@ export class RunCoordinator {
         "Report from a worker that does not hold the lease.",
       );
     }
-    if (attempt.fencingToken !== input.report.fencingToken) {
+    const committedLease = toCommittedLease(attempt);
+    if (committedLease === undefined) {
       throw new RunCoordinatorError(
-        "STALE_FENCING_TOKEN",
-        "Report carries a stale fencing token.",
+        "ATTEMPT_NOT_FOUND",
+        "Attempt has no committed lease.",
       );
     }
     const membership = await this.membershipLog.getState();
-    if (attempt.membershipEpoch !== null && attempt.membershipEpoch !== membership.epoch) {
+    const leases = this.membershipLog.leases;
+    if (leases.get(committedLease.leaseId) === undefined) {
+      throw new RunCoordinatorError(
+        "STALE_FENCING_TOKEN",
+        "Lease has been fenced or revoked; attempt rejected.",
+      );
+    }
+    if (!isFreshFencingToken(input.report.fencingToken, committedLease)) {
+      throw new RunCoordinatorError(
+        "STALE_FENCING_TOKEN",
+        describeFencingTokenMismatch(
+          input.report.fencingToken,
+          committedLease,
+          "Report",
+        ),
+      );
+    }
+    if (!isCommittedLeaseUsable(committedLease, membership.epoch, input.now)) {
+      if (committedLease.expiresAt <= input.now) {
+        throw new RunCoordinatorError(
+          "LEASE_EXPIRED",
+          "Lease has expired; attempt fenced.",
+        );
+      }
       throw new RunCoordinatorError(
         "STALE_FENCING_TOKEN",
         "Lease membership epoch has advanced; attempt fenced.",
-      );
-    }
-    if (attempt.expiresAt !== null && attempt.expiresAt <= input.now) {
-      throw new RunCoordinatorError(
-        "LEASE_EXPIRED",
-        "Lease has expired; attempt fenced.",
       );
     }
     if (TERMINAL_ATTEMPT_STATUSES.has(attempt.status)) {
@@ -818,23 +881,41 @@ export class RunCoordinator {
         "Renewal from a worker that does not hold the lease.",
       );
     }
-    if (attempt.fencingToken !== input.request.fencingToken) {
+    const committedLease = toCommittedLease(attempt);
+    if (committedLease === undefined) {
       throw new RunCoordinatorError(
-        "STALE_FENCING_TOKEN",
-        "Renewal carries a stale fencing token.",
+        "ATTEMPT_NOT_FOUND",
+        "Attempt has no committed lease.",
       );
     }
     const membership = await this.membershipLog.getState();
-    if (attempt.membershipEpoch !== null && attempt.membershipEpoch !== membership.epoch) {
+    const leases = this.membershipLog.leases;
+    if (leases.get(committedLease.leaseId) === undefined) {
+      throw new RunCoordinatorError(
+        "STALE_FENCING_TOKEN",
+        "Lease has been fenced or revoked; cannot renew.",
+      );
+    }
+    if (!isFreshFencingToken(input.request.fencingToken, committedLease)) {
+      throw new RunCoordinatorError(
+        "STALE_FENCING_TOKEN",
+        describeFencingTokenMismatch(
+          input.request.fencingToken,
+          committedLease,
+          "Renewal",
+        ),
+      );
+    }
+    if (!isCommittedLeaseUsable(committedLease, membership.epoch, input.now)) {
+      if (committedLease.expiresAt <= input.now) {
+        throw new RunCoordinatorError(
+          "LEASE_EXPIRED",
+          "Lease has expired; cannot renew.",
+        );
+      }
       throw new RunCoordinatorError(
         "STALE_FENCING_TOKEN",
         "Lease membership epoch has advanced; cannot renew.",
-      );
-    }
-    if (attempt.expiresAt !== null && attempt.expiresAt <= input.now) {
-      throw new RunCoordinatorError(
-        "LEASE_EXPIRED",
-        "Lease has expired; cannot renew.",
       );
     }
     if (TERMINAL_ATTEMPT_STATUSES.has(attempt.status)) {
@@ -967,6 +1048,8 @@ export class RunCoordinator {
     }
 
     if (input.peerClaims !== undefined) {
+      const leases = this.membershipLog.leases;
+      const registeredLeases = leases.list();
       for (const claim of input.peerClaims) {
         if (claim.clusterId !== membership.clusterId) continue;
         if (claim.epoch !== membership.epoch) continue;
@@ -974,9 +1057,10 @@ export class RunCoordinator {
           if (!ACTIVE_ATTEMPT_STATUSES.has(attempt.status)) continue;
           if (attempt.workerNodeId === null) continue;
           if (!claim.memberIds.includes(attempt.workerNodeId)) {
-            const remoteLease = this.membershipLog.leases.getByRunAndAttempt(
-              attempt.runId,
-              attempt.attempt,
+            const remoteLease = registeredLeases.find(
+              (lease) =>
+                lease.runId === attempt.runId &&
+                lease.attempt === attempt.attempt,
             );
             if (remoteLease && remoteLease.workerNodeId !== attempt.workerNodeId) {
               conflictingAssignments.push({

@@ -2,6 +2,8 @@ export * from "./errors";
 export * from "./hash";
 export * from "./encryption";
 export * from "./chunk";
+export * from "./store";
+export * from "./retention";
 export * from "./stream";
 export * from "./pagination";
 export * from "./metadata";

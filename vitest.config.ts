@@ -9,6 +9,7 @@ export default defineConfig({
       'scripts/**/*.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**'],
+    setupFiles: ['./artifacts/api-server/src/test-setup.ts'],
     passWithNoTests: false,
   },
 });

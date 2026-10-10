@@ -7,14 +7,16 @@ import {
   RequestNodeLeaveBody,
   RequestNodeLeaveResponse,
 } from "@workspace/api-zod";
-import { DomainError } from "@workspace/opennode-domain";
+import { createNodeId, DomainError } from "@workspace/opennode-domain";
 import { DEFAULT_RETENTION_RULES } from "@workspace/node-lifecycle";
 import { MembershipLogError, leaveMessage } from "@workspace/membership-log";
+import { type MembershipCertificate } from "@workspace/peernet";
 import { metricsRegistry } from "@workspace/observability";
 import {
   acceptsNewAssignments,
   getGovernance,
   getFeatureFlags,
+  getRunCoordinator,
   nodeStore,
   type GovernanceRuntime,
 } from "../lib/runtime";
@@ -22,6 +24,9 @@ import { requestId, actorId } from "../middlewares/correlation";
 import { logger } from "../lib/logger";
 
 const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000;
+const MEMBERSHIP_CREDENTIAL_TTL_MS = 24 * 60 * 60 * 1000;
+
+export const issuedMembershipCredentials = new Map<string, MembershipCertificate>();
 
 const router: IRouter = Router();
 
@@ -132,6 +137,17 @@ async function finalizePassed(g: GovernanceRuntime, proposalId: string, now: num
     await g.lifecycle.handleEviction({ subjectId: snapshot.subjectId, epoch: newEpoch });
   }
   await g.membershipLog.reconcile(now);
+  await (await getRunCoordinator()).fenceOnMembershipChange();
+  if (snapshot.kind === "admission") {
+    const credential = await g.membershipLog.issueMembershipCredential({
+      nodeId: createNodeId(snapshot.subjectId),
+      now,
+      ttlMs: MEMBERSHIP_CREDENTIAL_TTL_MS,
+      secretKey: g.localSecretKey,
+      scheme: g.scheme,
+    });
+    issuedMembershipCredentials.set(snapshot.subjectId, credential);
+  }
   void decided;
 }
 
@@ -355,6 +371,7 @@ router.post("/membership/leave", async (req, res) => {
       now,
     });
     await g.membershipLog.reconcile(now);
+    await (await getRunCoordinator()).fenceOnMembershipChange();
     g.state.leftLocalNode = true;
     logger.info({ requestId: rid, epoch: newEpoch }, "voluntary leave committed");
     res.status(202).json(
@@ -384,7 +401,7 @@ router.get("/membership/status", async (req, res) => {
       memberIds: committed.memberIds,
       acceptingNewWork: g.lifecycle.acceptsNewAssignments(),
       leftLocalNode: g.state.leftLocalNode,
-      quarantinedNodeId: null,
+      quarantinedNodeId: g.capacity.isQuarantined(g.localNodeId) ? g.localNodeId : null,
       syncStatus: "local_only",
       proposalCounts: counts,
       retentionRules: DEFAULT_RETENTION_RULES,

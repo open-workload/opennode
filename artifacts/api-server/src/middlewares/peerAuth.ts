@@ -1,12 +1,12 @@
 import { type Request, type Response, type NextFunction } from "express";
 import { verify } from "@noble/ed25519";
-import { PeerNetError } from "@workspace/peernet";
 import {
   MembershipCertificate,
   CertificateRevocationList,
   FrozenMembership,
-  verifyMembershipCertificate,
+  authorizePeerAccess,
 } from "@workspace/peernet/membership";
+import { createNonceCache, type NonceCache } from "@workspace/peernet/replayProtection";
 import { createEd25519Scheme } from "@workspace/peernet/signatures";
 import { logger } from "../lib/logger";
 
@@ -31,7 +31,7 @@ async function verifyRequestSignature(
   opts: {
     readonly now: number;
     readonly getPeerPublicKey: (nodeId: string) => Uint8Array | null;
-    readonly consumeNonce: (nodeId: string, nonce: string, expiresAt: number) => Promise<boolean>;
+    readonly nonceCache: NonceCache;
   },
 ): Promise<boolean> {
   const signatureHeader = req.headers["x-peer-signature"];
@@ -71,7 +71,11 @@ async function verifyRequestSignature(
       publicKey,
     );
     if (!validSignature) return false;
-    return await opts.consumeNonce(nodeId, nonceHeader, timestamp + MAX_CLOCK_SKEW_MS);
+    return opts.nonceCache.checkAndRecord(
+      `${nodeId}:${nonceHeader}`,
+      opts.now,
+      timestamp + MAX_CLOCK_SKEW_MS,
+    );
   } catch {
     return false;
   }
@@ -102,8 +106,8 @@ export function createPeerAuthMiddleware(opts: {
   readonly getCRL: () => CertificateRevocationList | null;
   readonly now: () => number;
   readonly getPeerPublicKey: (nodeId: string) => Uint8Array | null;
-  readonly consumeNonce: (nodeId: string, nonce: string, expiresAt: number) => Promise<boolean>;
 }) {
+  const nonceCache = createNonceCache();
   return async function peerAuthMiddleware(
     req: PeerAuthenticatedRequest,
     res: Response,
@@ -135,7 +139,7 @@ export function createPeerAuthMiddleware(opts: {
     if (!(await verifyRequestSignature(req, certificate, {
       now: opts.now(),
       getPeerPublicKey: opts.getPeerPublicKey,
-      consumeNonce: opts.consumeNonce,
+      nonceCache,
     }))) {
       res.status(401).json({ 
         error: "Invalid or missing request body signature", 
@@ -145,23 +149,25 @@ export function createPeerAuthMiddleware(opts: {
     }
 
     // Verify membership certificate with CA and CRL
-    const crl = opts.getCRL();
-    try {
-      verifyMembershipCertificate(
-        certificate,
-        opts.frozenMembership,
-        opts.caPublicKey,
-        crl,
-        {
-          now: opts.now(),
-          scheme: createEd25519Scheme(),
-        }
+    const decision = authorizePeerAccess(
+      certificate,
+      opts.frozenMembership,
+      opts.caPublicKey,
+      opts.getCRL(),
+      {
+        now: opts.now(),
+        scheme: createEd25519Scheme(),
+      }
+    );
+    if (!decision.allowed) {
+      logger.warn(
+        { path: req.path, nodeId: certificate.nodeId.value, reason: decision.reason },
+        "Peer certificate verification failed",
       );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Certificate verification failed";
-      const code = error instanceof PeerNetError ? error.code : "PEER_CERT_INVALID";
-      logger.warn({ err: error, path: req.path, nodeId: certificate.nodeId.value }, "Peer certificate verification failed");
-      res.status(401).json({ error: message, code });
+      res.status(401).json({
+        error: decision.reason ?? "Certificate verification failed",
+        code: "PEER_CERT_INVALID",
+      });
       return;
     }
 
@@ -198,7 +204,6 @@ export function createOptionalPeerAuthMiddleware(opts: {
   readonly getCRL: () => CertificateRevocationList | null;
   readonly now: () => number;
   readonly getPeerPublicKey: (nodeId: string) => Uint8Array | null;
-  readonly consumeNonce: (nodeId: string, nonce: string, expiresAt: number) => Promise<boolean>;
 }) {
   const requiredMiddleware = createPeerAuthMiddleware(opts);
   return async function optionalPeerAuthMiddleware(

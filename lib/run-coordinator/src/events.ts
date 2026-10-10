@@ -94,6 +94,7 @@ export function isRunKind(kind: string): boolean {
   return (
     kind === RUN_SUBMITTED_KIND ||
     kind === RUN_LEASE_GRANTED_KIND ||
+    kind === RUN_LEASE_RENEWED_KIND ||
     kind === RUN_ATTEMPT_OBSERVED_KIND ||
     kind === RUN_CANCEL_REQUESTED_KIND ||
     kind === RUN_RETRY_REQUESTED_KIND ||

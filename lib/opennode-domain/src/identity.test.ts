@@ -1,9 +1,38 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+const dbMock = vi.hoisted(() => {
+  const state = { existingIdentity: [] as Array<{ nodeId: string }> };
+  const db = {
+    insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
+    select: () => ({ from: () => ({ limit: async () => state.existingIdentity }) }),
+  };
+  return { db, state };
+});
+
+vi.mock('@workspace/db', () => ({
+  db: dbMock.db,
+  clusterNodesTable: { id: 'clusterNodes.id' },
+  localNodeIdentityTable: { singleton: 'localNodeIdentity.singleton', nodeId: 'localNodeIdentity.nodeId' },
+}));
+
 import { DomainError } from './errors';
 import {
   deriveNodeIdFromSecretKey,
   assertNoNodeIdCollision,
+  ensureNodeIdentity,
+  type NodeIdentityKeystore,
+  type StoredNodeIdentity,
 } from './identity';
+
+class InMemoryKeystore implements NodeIdentityKeystore {
+  private identity: StoredNodeIdentity | undefined;
+  load(): StoredNodeIdentity | undefined {
+    return this.identity;
+  }
+  save(identity: StoredNodeIdentity): void {
+    this.identity = identity;
+  }
+}
 
 describe('identity', () => {
   describe('deriveNodeIdFromSecretKey', () => {
@@ -57,6 +86,39 @@ describe('identity', () => {
 
     it('handles empty array', () => {
       expect(() => assertNoNodeIdCollision([])).not.toThrow();
+    });
+  });
+
+  describe('ensureNodeIdentity', () => {
+    it('creates the identity exactly once and reuses it across boots', async () => {
+      const keystore = new InMemoryKeystore();
+      const createSecretKey = vi.fn(() => 'persisted-secret');
+
+      const first = await ensureNodeIdentity(keystore, createSecretKey);
+      const second = await ensureNodeIdentity(keystore, createSecretKey);
+
+      expect(second.nodeId.value).toBe(first.nodeId.value);
+      expect(first.nodeId.value).toBe(deriveNodeIdFromSecretKey('persisted-secret'));
+      expect(createSecretKey).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses to boot when the stored key does not match its node ID', async () => {
+      const keystore = new InMemoryKeystore();
+      keystore.save({ secretKey: 'secret-a', nodeId: 'forged-node' });
+
+      await expect(ensureNodeIdentity(keystore, () => 'secret-b')).rejects.toMatchObject({
+        code: 'IDENTITY_COLLISION',
+      });
+    });
+
+    it('refuses to boot when local_node_identity disagrees with the derived node ID', async () => {
+      const keystore = new InMemoryKeystore();
+      await ensureNodeIdentity(keystore, () => 'secret-a');
+      dbMock.state.existingIdentity = [{ nodeId: 'someone-else' }];
+
+      await expect(ensureNodeIdentity(keystore, () => 'secret-a')).rejects.toMatchObject({
+        code: 'IDENTITY_COLLISION',
+      });
     });
   });
 });

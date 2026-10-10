@@ -10,3 +10,5 @@ export * from "./oci";
 export * from "./secretBroker";
 export * from "./contentStore";
 export * from "./realBackend";
+export * from "./rootlessRuntime";
+export * from "./rootlessBackend";

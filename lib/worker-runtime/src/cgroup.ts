@@ -1,7 +1,11 @@
-import { mkdtemp, writeFile, readFile, rm, mkdir, stat } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm, mkdir, stat, rmdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WorkerRuntimeError } from "./errors";
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export interface CgroupConfig {
   cpuMax?: string;
@@ -27,6 +31,28 @@ export class CgroupManager {
 
   async ensureRoot(): Promise<void> {
     await mkdir(this.root, { recursive: true });
+
+    let available: string;
+    try {
+      available = await readFile(join(this.root, "cgroup.controllers"), "utf8");
+    } catch {
+      return;
+    }
+    let enabled = "";
+    try {
+      enabled = await readFile(join(this.root, "cgroup.subtree_control"), "utf8");
+    } catch {
+      // subtree_control is not readable yet; treat as nothing enabled
+    }
+    const have = new Set(available.split(/\s+/).filter(Boolean));
+    const on = new Set(enabled.split(/\s+/).filter(Boolean));
+    const missing = ["cpu", "memory", "pids"].filter((c) => have.has(c) && !on.has(c));
+    if (missing.length > 0) {
+      await writeFile(
+        join(this.root, "cgroup.subtree_control"),
+        missing.map((c) => `+${c}`).join(" "),
+      );
+    }
   }
 
   async create(attemptId: string, config: CgroupConfig): Promise<CgroupHandle> {
@@ -34,7 +60,7 @@ export class CgroupManager {
     const cgroupPath = join(this.root, attemptId);
     await mkdir(cgroupPath, { recursive: true });
 
-    const tasks = [];
+    const tasks: Array<Promise<void>> = [];
     if (config.cpuMax) {
       tasks.push(writeFile(join(cgroupPath, "cpu.max"), config.cpuMax));
     }
@@ -44,10 +70,23 @@ export class CgroupManager {
     if (config.pidsMax) {
       tasks.push(writeFile(join(cgroupPath, "pids.max"), config.pidsMax));
     }
-    if (config.ioMax) {
-      tasks.push(writeFile(join(cgroupPath, "io.max"), config.ioMax));
+    try {
+      await Promise.all(tasks);
+    } catch (err) {
+      try {
+        await rmdir(cgroupPath);
+      } catch {
+      }
+      throw err;
     }
-    await Promise.all(tasks);
+
+    if (config.ioMax) {
+      try {
+        await writeFile(join(cgroupPath, "io.max"), config.ioMax);
+      } catch {
+        // io.max may not be available/enabled on some rootless cgroup v2 setups
+      }
+    }
 
     return {
       path: cgroupPath,
@@ -56,7 +95,25 @@ export class CgroupManager {
       },
       cleanup: async () => {
         try {
-          await rm(cgroupPath, { recursive: true, force: true });
+          try {
+            await writeFile(join(cgroupPath, "cgroup.kill"), "1");
+          } catch {
+            // ignore
+          }
+          const attempts = 10;
+          let removed = false;
+          for (let i = 0; i < attempts; i++) {
+            try {
+              await rmdir(cgroupPath);
+              removed = true;
+              break;
+            } catch {
+              await delay(100);
+            }
+          }
+          if (!removed) {
+            await rm(cgroupPath, { recursive: true, force: true });
+          }
         } catch {
         }
       },
