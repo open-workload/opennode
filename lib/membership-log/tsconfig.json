@@ -6,13 +6,28 @@
     "emitDeclarationOnly": true,
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../opennode-domain" },
-    { "path": "../sync-engine" },
-    { "path": "../peernet" },
-    { "path": "../raft-log" }
+    {
+      "path": "../opennode-domain"
+    },
+    {
+      "path": "../sync-engine"
+    },
+    {
+      "path": "../peernet"
+    },
+    {
+      "path": "../raft-log"
+    },
+    {
+      "path": "../observability"
+    }
   ]
 }

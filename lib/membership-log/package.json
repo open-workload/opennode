@@ -7,10 +7,11 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@workspace/observability": "workspace:*",
     "@workspace/opennode-domain": "workspace:*",
     "@workspace/peernet": "workspace:*",
-    "@workspace/sync-engine": "workspace:*",
-    "@workspace/raft-log": "workspace:*"
+    "@workspace/raft-log": "workspace:*",
+    "@workspace/sync-engine": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:"
