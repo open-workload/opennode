@@ -943,6 +943,9 @@ importers:
       '@workspace/node-lifecycle':
         specifier: workspace:*
         version: link:../lib/node-lifecycle
+      '@workspace/node-store':
+        specifier: workspace:*
+        version: link:../lib/node-store
       '@workspace/opennode-domain':
         specifier: workspace:*
         version: link:../lib/opennode-domain

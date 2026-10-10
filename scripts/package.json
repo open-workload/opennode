@@ -16,6 +16,7 @@
     "@workspace/membership-log": "workspace:*",
     "@workspace/feature-flags": "workspace:*",
     "@workspace/node-lifecycle": "workspace:*",
+    "@workspace/node-store": "workspace:*",
     "@workspace/peernet": "workspace:*"
   },
   "devDependencies": {
