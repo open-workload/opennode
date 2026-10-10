@@ -8,6 +8,10 @@
  *   validateEntry re-checks schema, cluster, sequence, prevHash, epoch,
  *   the recomputed hash and the signature. Nothing is appended that has
  *   not already passed all seven.
+ *
+ *   appendEvent runs tip → validate → append inside one per-log promise
+ *   chain, so a sequence number is allocated in the same critical section
+ *   that commits its entry; the loser of a race gets SEQUENCE_GAP.
  */
 import {
   ClusterEvent,
@@ -166,6 +170,8 @@ export interface EventLogStore {
 }
 
 export class EventLog {
+  private appendChain: Promise<unknown> = Promise.resolve();
+
   constructor(
     private readonly store: EventLogStore,
     private readonly clusterId: ClusterId,
@@ -203,29 +209,36 @@ export class EventLog {
     event: ClusterEvent,
     signer: Signer,
   ): Promise<SignedLogEntry> {
-    const tip = await this.getTip();
-    if (event.sequence !== tip.height) {
-      throw new SyncEngineError(
-        "SEQUENCE_GAP",
-        `Cannot append event with sequence ${event.sequence} after height ${tip.height}.`,
-      );
-    }
-    if (event.clusterId.value !== this.clusterId.value) {
-      throw new SyncEngineError("WRONG_CLUSTER", "Event clusterId mismatch.");
-    }
-    const entry = signEntry(event, tip.tipHash, signer);
-    validateEntry(entry, {
-      clusterId: this.clusterId,
-      verifier: this.verifier,
-      expectedSequence: tip.height,
-      expectedPrevHash: tip.tipHash,
-      previousEpoch:
-        tip.height === 0
-          ? null
-          : (await this.store.getEntry(tip.height - 1))?.event.epoch ?? null,
+    const run = this.appendChain.then(async () => {
+      const tip = await this.getTip();
+      if (event.sequence !== tip.height) {
+        throw new SyncEngineError(
+          "SEQUENCE_GAP",
+          `Cannot append event with sequence ${event.sequence} after height ${tip.height}.`,
+        );
+      }
+      if (event.clusterId.value !== this.clusterId.value) {
+        throw new SyncEngineError("WRONG_CLUSTER", "Event clusterId mismatch.");
+      }
+      const entry = signEntry(event, tip.tipHash, signer);
+      validateEntry(entry, {
+        clusterId: this.clusterId,
+        verifier: this.verifier,
+        expectedSequence: tip.height,
+        expectedPrevHash: tip.tipHash,
+        previousEpoch:
+          tip.height === 0
+            ? null
+            : (await this.store.getEntry(tip.height - 1))?.event.epoch ?? null,
+      });
+      await this.store.append([entry]);
+      return entry;
     });
-    await this.store.append([entry]);
-    return entry;
+    this.appendChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   async appendVerified(entries: readonly SignedLogEntry[]): Promise<void> {
