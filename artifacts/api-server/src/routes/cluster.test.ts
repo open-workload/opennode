@@ -94,10 +94,20 @@ const runRow = {
 
 let server: Server;
 let baseUrl: string;
+let currentRoles: string[] = ["admin"];
 
 beforeAll(async () => {
   const app = express();
   app.use(express.json());
+  app.use((req, _res, next) => {
+    (req as { auth?: unknown }).auth = {
+      userId: "user_test",
+      sessionId: "session_test",
+      actorId: "user_test",
+      claims: { roles: currentRoles },
+    };
+    next();
+  });
   app.use(clusterRouter);
   await new Promise<void>((resolve) => {
     server = app.listen(0, () => resolve());
@@ -113,6 +123,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  currentRoles = ["admin"];
   mocks.getGovernance.mockResolvedValue({ clusterIdValue: "gov-cluster" });
 });
 
@@ -236,5 +247,14 @@ describe("cluster routes", () => {
     expect(parsed.cluster.consensusStatus).toBe("healthy");
     expect(parsed.runCounts).toEqual({ queued: 0, running: 0, succeeded: 0, failed: 0 });
     expect(mocks.getGovernance).not.toHaveBeenCalled();
+  });
+
+  it("denies a read below the viewer role before any protected state is read", async () => {
+    currentRoles = [];
+
+    const res = await fetch(`${baseUrl}/nodes`);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: "FORBIDDEN" });
+    expect(mocks.nodeStore.listNodes).not.toHaveBeenCalled();
   });
 });
