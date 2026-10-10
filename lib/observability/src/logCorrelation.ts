@@ -1,3 +1,14 @@
+/**
+ * Correlates log lines with request/run/attempt/node ids and fans them out to handlers.
+ *
+ *   log()/info()/warn()/error() ──▶ base ids + per-call ids ──▶ StructuredLogEntry
+ *        │                                                       │
+ *   child(ids) narrows scope, shares handlers                    ▼
+ *                                               handlers (a throwing one is skipped)
+ *   withOperation(fn) ──▶ start ──▶ durationMs ──▶ completed | failed + rethrow
+ *   createConsoleLogHandler(minLevel) ──▶ console.log line, filtered by level
+ *   no caller in this repo wires globalLogCorrelator to a handler yet
+ */
 export enum LogLevel {
   Debug = "debug",
   Info = "info",

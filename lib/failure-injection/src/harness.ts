@@ -1,3 +1,14 @@
+/**
+ * Scenario driver: arms a set of fault points, then tears them down.
+ *
+ *   runScenario ──▶ setup ──▶ createInjection per point ──▶ timer
+ *        ▲                                                    │
+ *        └──────────────── stopScenario ◀──── durationMs ─────┘
+ *
+ * Rejects a second concurrent run. Several built-in scenarios name fault
+ * types the injector never implements, so they arm cleanly but no fault
+ * fires; teardown swallows its own errors.
+ */
 import { FailureInjector, FaultPointRegistration, FaultType, type FaultConfig, type FaultInjection } from "./injector";
 
 export interface HarnessConfig {

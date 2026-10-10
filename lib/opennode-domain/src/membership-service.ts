@@ -1,3 +1,14 @@
+/**
+ * Stateful membership: proposals, revisioned ballots, and the only place the
+ * member set and epoch change.
+ *
+ *   propose* ──▶ open (frozen electorate + computed threshold)
+ *   ballot ──▶ cluster, epoch, expiry, signature, revision ──▶ evaluate
+ *              │                                            │
+ *              │                                open | passed | rejected | expired
+ *   commitDecision ──▶ passed ──▶ add | remove member ──▶ epoch++ ──▶ committed
+ *   reconcile(newer epoch) ──▶ replace members ──▶ invalidate older proposals
+ */
 import { DomainError } from "./errors";
 import { admissionThreshold, evictionThreshold } from "./governance";
 

@@ -1,3 +1,17 @@
+/**
+ * Orchestrates one worker attempt around a backend: validate, isolate, run, reap.
+ *
+ *   spec ─▶ validateWorkerSpec ─▶ cgroup ─▶ nftables ─▶ image pull ─▶ secrets ─▶ backend.start
+ *     │             │ fail                                                  │
+ *     │             └──▶ teardown + throw WorkerSpecError        active run + history
+ *     └── runId already active ─▶ throw duplicate_run                           │
+ *
+ *   active run: setTimeout(wallClockMs) ─▶ cancel(timeout); evict/outage ─▶ cancel
+ *   handle.wait ─▶ teardown ─▶ nft.remove + cgroup.cleanup + handle.cleanup ─▶ WorkerResult
+ *
+ * The wall-clock cap is a plain setTimeout; the injected `now` is never read.
+ */
+
 import type { WorkerBackend, WorkerHandle, CleanupReport } from "./backend";
 import { WorkerSpecError, WorkerRuntimeError } from "./errors";
 import { validateWorkerSpec, type PolicyResult, type WorkerSpec } from "./spec";

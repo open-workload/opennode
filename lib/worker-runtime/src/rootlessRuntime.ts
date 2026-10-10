@@ -1,3 +1,16 @@
+/**
+ * Maps a rootless runtime kind to the argv that launches it. Builds argv only.
+ *
+ *   kind + image + command + workDir ─┬── "udocker" ─▶ <prefix>/udocker-venv/bin/udocker
+ *                                     │                 run --hostauth --rm -v work:/workspace
+ *                                     └── "userns"  ─▶ unshare --user --map-root-user --pid
+ *                                                       --fork --mount --net chroot <rootfs>
+ *
+ *   "userns" without rootfs ─▶ throw missing_rootfs   other kind ─▶ unsupported_runtime
+ *
+ *   detectRootlessRuntime ─▶ existsSync(binary, or unshare + rootfs) ─▶ boolean
+ */
+
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { WorkerRuntimeError } from "./errors";

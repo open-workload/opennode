@@ -1,3 +1,15 @@
+/**
+ * Express app assembly. Order is the contract: logging, the Clerk proxy,
+ * parsers, then Clerk session resolution, then the guarded API surface.
+ *
+ *   req ─▶ pino-http ─▶ CLERK_PROXY_PATH (raw body, pre-parser) ─▶ helmet
+ *     ─▶ correlation ─▶ json/urlencoded ─▶ clerkMiddleware (publishable key
+ *        chosen per Host) ─▶ /api/health (public) or
+ *        authMiddleware ─▶ sameOriginWriteGuard ─▶ correlation ─▶ metrics ─▶ router
+ *
+ *   Any guard that answers ─▶ 401 / 403 and stops here; no route ever runs.
+ */
+
 import express, { type Express } from "express";
 import helmet from "helmet";
 import { clerkMiddleware } from "@clerk/express";

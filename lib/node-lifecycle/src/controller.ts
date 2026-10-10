@@ -1,3 +1,17 @@
+/**
+ * Two exit paths for a departing node, each fanning out to injected deps.
+ *
+ *   voluntary leave ──▶ gate ──▶ drain ──▶ invalidate  ──▶ publish
+ *   eviction        ──▶ gate ──▶ revoke ──▶ invalidate  ──▶ quarantine ──▶ retain
+ *                                  │                                         │
+ *                  audit.record ◀────────────────────────────────────────────┘
+ *                        │
+ *                        ▼
+ *                      NodeLifecycleReport
+ *
+ * Six separate injected steps, not one pipeline: leave drains and publishes
+ * but never revokes credentials or quarantines capacity.
+ */
 export type LifecycleCause = "voluntary-leave" | "eviction";
 
 export interface AssignmentGate {

@@ -1,3 +1,16 @@
+/**
+ * Thin worker-side facade over @workspace/secret-broker, plus an in-memory store.
+ *
+ *   (secretRefId, jobId, attemptId, clusterId) ─▶ SecretId + JobScope ─▶ broker.issue
+ *                                                               ├─▶ .get ─▶ value
+ *                                                               └─▶ .revoke
+ *   leaseToken ─▶ JSON.parse ─▶ WorkerIdentity ─────────────────────▶ broker.get
+ *   resolveSecrets ─▶ Promise.all over refs ─▶ ResolvedSecret[]  (bad JSON ─▶ throw)
+ *
+ *   InMemorySecretStore keys on secretId:jobId:attemptId, swept by an unref'd interval
+ *   ConsoleAuditSink prints every AuditEvent as a [AUDIT] JSON line
+ */
+
 import {
   SecretBroker,
   createSecretBroker,

@@ -1,3 +1,15 @@
+/**
+ * In-memory rumor store: version-wins dedupe plus hash-based anti-entropy.
+ *
+ *   ingest(msg) ──▶ assertAdvisory ──▶ validateGossipMessage ──▶ compare version
+ *        │              │                                          │
+ *        │              └──▶ throws GossipError    applied | duplicate
+ *        │                                             | stale-version
+ *        ▼                                             ▼
+ *   expire(now) drops expired           digest() ──▶ entries + merkle setHash
+ *        │
+ *   antiEntropy(remoteDigest) ──▶ reconcile() ──▶ advertise | request ──▶ fetchMissing()
+ */
 import { createHash } from "node:crypto";
 import { ClusterId, SCHEMA_VERSION } from "@workspace/opennode-domain";
 import { GossipError } from "./errors";

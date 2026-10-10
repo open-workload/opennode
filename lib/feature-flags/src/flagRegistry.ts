@@ -1,3 +1,14 @@
+/**
+ * Flag definitions and their evaluation, with deterministic rollout.
+ *
+ *   definition ──▶ register ──▶ Map ──▶ evaluate(key, context)
+ *                  dup key       │           │
+ *                  throw         │     rollout < 100?
+ *                                        hash(key|ctx) % 100
+ *                                        bucket out ──▶ defaultValue
+ *
+ * Overrides are applied by deleting the flag and re-registering it.
+ */
 import { FeatureFlagsError } from "./errors";
 
 export type FlagValue = boolean | number | string | Record<string, unknown>;

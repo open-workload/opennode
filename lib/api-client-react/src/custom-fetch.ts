@@ -1,3 +1,13 @@
+/**
+ * Wraps global fetch: base URL, bearer token, body parsing, ApiError.
+ *
+ *   request ──▶ base URL ──▶ merge headers ──▶ bearer token ──▶ fetch
+ *      │                                                          │
+ *      no body on GET/HEAD                                 throw on !ok
+ *
+ *   response ──▶ ok? ──▶ parse as json | text | blob ──▶ caller
+ *                 └──▶ parse error body ──▶ throw ApiError
+ */
 export type CustomFetchOptions = RequestInit & {
   responseType?: "json" | "text" | "blob" | "auto";
 };

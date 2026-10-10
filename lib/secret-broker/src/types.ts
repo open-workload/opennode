@@ -1,3 +1,12 @@
+/**
+ * Branded value objects for secrets, plus their runtime validators.
+ *
+ *   raw strings ──▶ create* ──▶ frozen SecretId / JobScope / WorkerIdentity
+ *                      │          (issuedAt must precede expiresAt)
+ *
+ *   untrusted value ──▶ assert* ──▶ void, or throw on a malformed shape
+ *   identity + now ──▶ isWorkerIdentityValid ──▶ boolean in-window
+ */
 import { NodeId, ClusterId } from "@workspace/opennode-domain";
 
 export interface SecretId {

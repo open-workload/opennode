@@ -1,3 +1,15 @@
+/**
+ * Run leases, usable only while bound to the current committed membership epoch.
+ *
+ *   LeaseRecord { leaseId, runId, attempt, workerNodeId, membershipEpoch, expiresAt }
+ *        │
+ *        ├──▶ validateLease ──bad shape──▶ MEMBERSHIP_LOG_INVALID
+ *        │
+ *        └──▶ isLeaseStale(lease, currentMembershipEpoch, now)
+ *                    │  epoch mismatch, or expiresAt <= now
+ *                    ▼
+ *             LeaseRegistry.fenceOnEpochChange ──▶ removed leases, for revocation
+ */
 import { MembershipLogError } from "./errors";
 
 export interface LeaseRecord {

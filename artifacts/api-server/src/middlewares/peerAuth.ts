@@ -1,3 +1,18 @@
+/**
+ * Peer-to-peer request auth: membership certificate, signed request, CRL check.
+ *
+ *   X-Peer-Certificate (base64 JSON) ─┬─ missing  ─▶ 401 PEER_CERT_REQUIRED
+ *                                      └─ unparseable ─▶ 400 PEER_CERT_INVALID_FORMAT
+ *   X-Peer-Signature / -Timestamp / -Nonce
+ *     ─▶ sign over METHOD\nURL\ntimestamp\nnonce\nstableStringify(body) ─▶ Ed25519
+ *     ─▶ skew <= 60s, then nonce cache (one-shot per nodeId:nonce) ─▶ else 401
+ *
+ *   authorizePeerAccess(cert, frozenMembership, caKey, CRL) ─▶ 401 PEER_CERT_INVALID
+ *   X-Cluster-ID header vs cert cluster, if sent ─▶ mismatch ─▶ 403 PEER_CLUSTER_MISMATCH
+ *
+ *   pass ─▶ req.peerAuth + X-Peer-Node-ID / X-Peer-Cluster-ID response headers ─▶ next()
+ */
+
 import { type Request, type Response, type NextFunction } from "express";
 import { verify } from "@noble/ed25519";
 import {

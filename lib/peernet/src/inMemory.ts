@@ -1,3 +1,13 @@
+/**
+ * In-memory PeerTransport and the hub it shares. No production caller.
+ *
+ *   createInMemoryPair ──▶ register on hub ──▶ transport
+ *   transport.publish ──▶ hub.deliver ──▶ every other registered transport
+ *   transport.authenticate ──▶ verifyHandshake ──▶ PeerNetError | { protocol: 1 }
+ *
+ * Satisfies the transport.ts contract without any network I/O. Nothing in this
+ * repo imports it, and lib/peernet has no test files of its own.
+ */
 import { NodeId, createNodeId, deriveNodeIdFromSecretKey } from "@workspace/opennode-domain";
 import { DiscoveryHint, BootstrapPeer } from "./bootstrap";
 import { PeerNetError } from "./errors";

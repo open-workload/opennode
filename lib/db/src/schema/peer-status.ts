@@ -1,3 +1,12 @@
+/**
+ * Liveness view of a peer, keyed by node_id and scoped to a cluster.
+ *
+ *   peer_status ──▶ node_id (PK), cluster_id, address, capabilities[], metadata
+ *        │      └──▶ status: node_status enum; membership_epoch >= 0
+ *        │      └──▶ last_seen_at / last_heartbeat_at drive staleness decisions
+ *        └──▶ partial unique index: at most one row with is_local = true
+ *   table ──▶ createInsertSchema ──▶ InsertPeerStatus / PeerStatus
+ */
 import { createInsertSchema } from "drizzle-zod";
 import { boolean, check, index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";

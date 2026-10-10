@@ -1,3 +1,18 @@
+/**
+ * STUB backend (kind = "isolated_process_stub"). No sandbox: two setTimeouts
+ * stand in for spawning and exiting; cleanup only deletes a scratch dir.
+ *
+ *   start(spec) ─▶ mkdtemp scratch + temp-creds.json ─▶ starting
+ *                                                          │
+ *                              setTimeout(step) ────────────┤
+ *                              setTimeout(4x step) ─────────┤
+ *                                                          ▼
+ *                                          running ─▶ finished (succeeded | failed)
+ *
+ *   cancel ─▶ finished (cancelled)    wait ─▶ WorkerResult
+ *   cleanup ─▶ rm scratch; cgroup/nft/image flags are always false
+ */
+
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

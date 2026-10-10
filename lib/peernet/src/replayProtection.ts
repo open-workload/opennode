@@ -1,3 +1,14 @@
+/**
+ * Fixed-window rate limiter plus a nonce cache for handshake/discovery traffic.
+ *
+ *   nonce ──▶ sweep expired ──▶ seen? ──yes──▶ false (replay)
+ *                          └──no──▶ evict oldest at cap ──▶ record ──▶ true
+ *
+ *   key ──▶ current window ──▶ count >= limit? ──yes──▶ PeerNetError
+ *                                    └──no──▶ count++ ──▶ remaining allowance
+ *
+ * createNonceCache is wired into api-server peerAuth; createRateLimiter has no caller.
+ */
 import { PeerNetError } from "./errors";
 
 export interface NonceCache {

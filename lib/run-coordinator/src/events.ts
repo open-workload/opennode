@@ -1,3 +1,13 @@
+/**
+ * The run-event vocabulary: kind constants, payload shapes, a kind test.
+ *
+ *   kind string ──▶ isRunKind ──▶ boolean known
+ *
+ *   "run.*" literal ──▶ matching Payload interface ──▶ RunEventPayload
+ *
+ * Note: RunLeaseRenewedPayload is declared but omitted from the
+ * RunEventPayload union, so renewals are not typed as run events.
+ */
 export const RUN_SUBMITTED_KIND = "run.submitted";
 export const RUN_LEASE_GRANTED_KIND = "run.lease_granted";
 export const RUN_LEASE_RENEWED_KIND = "run.lease_renewed";

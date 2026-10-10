@@ -1,3 +1,14 @@
+/**
+ * Catch-up: bring a local log up to a peer's height by Merkle comparison.
+ *
+ *   checkpoint ─▶ snapshot ─▶ divergence ─▶ chunks ─▶ final compare
+ *      verify     verify +    binary      skip or   height +
+ *      tip hash   adopt       search       fetch +   root must
+ *                            + rollback   validate  match
+ *
+ * Bespoke single-writer sync, not a vetted consensus engine: trust rests
+ * on entry signatures plus a Merkle root the peer itself advertises.
+ */
 import { ClusterEvent, ClusterId } from "@workspace/opennode-domain";
 import { EventLog, SignedLogEntry, validateEntryChain } from "./eventLog";
 import { SyncEngineError } from "./errors";

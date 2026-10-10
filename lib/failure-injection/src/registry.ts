@@ -1,3 +1,13 @@
+/**
+ * Catalogue of fault points per subsystem, plus a module-level registry.
+ *
+ *   9 subsystem arrays ──▶ registerFaultPoints ──▶ Map ──▶ query / clear
+ *                          duplicate name throws
+ *
+ *   registerAllFaultPoints ──▶ spreads all nine into the same Map.
+ *   Each entry lists the FaultTypes it claims to support. The injector
+ *   built inside registerFaultPoints is discarded; only the Map is kept.
+ */
 import { FailureInjector, FaultPointRegistration, FaultType } from "./injector";
 
 const faultPointRegistry = new Map<string, FaultPointRegistration>();

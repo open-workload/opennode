@@ -1,3 +1,17 @@
+/**
+ * Backend kind "rootless_isolated": spawns udocker or unshare+chroot, no daemon.
+ *
+ *   spec ─▶ scratch + workDir ─▶ buildRootlessInvocation ─▶ spawn(detached)
+ *                                                       │
+ *   cgroup create ─▶ enter(pid), dropped on failure ──────┘
+ *
+ *   stdout+stderr ─▶ byte cap exceeded ─▶ kill      wall clock ─▶ timed_out
+ *   exit 0 ─▶ succeeded / non-zero ─▶ failed / cancel ─▶ cancelled / spawn err ─▶ infra_error
+ *
+ *   kill ─▶ process-group SIGTERM, then SIGKILL after graceMs (ns-init ignores TERM)
+ *   close ─▶ write output.log ─▶ settle ─▶ wait()   cleanup ─▶ rm scratch + cgroup
+ */
+
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

@@ -1,3 +1,14 @@
+/**
+ * A submitted workload run: the parent row that attempts hang off.
+ *
+ *   workload_runs ──▶ client_request_id unique (idempotency key)
+ *        │      ├──▶ mode: run_mode, status: run_status, execution_mode
+ *        │      ├──▶ command: string[], resources: {cpuMilli, memoryMiB, ...}
+ *        │      ├──▶ request_fingerprint for dedupe; attempt_count >= 0
+ *        │      ├──▶ network_policy: deny_all | allowlist
+ *        │      └──▶ submitted_via_node_id / worker_node_id (plain text, no FK)
+ *   table ──▶ createInsertSchema ──▶ InsertWorkloadRun / WorkloadRun
+ */
 import { createInsertSchema } from "drizzle-zod";
 import { check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";

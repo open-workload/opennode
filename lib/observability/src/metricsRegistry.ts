@@ -1,3 +1,12 @@
+/**
+ * Tiny in-memory Prometheus registry: counters, gauges, and text exposition.
+ *
+ *   increment(name, labels) / set(name, value, labels) ──▶ series map
+ *        │                                                │
+ *        └──▶ filterLabels: allowlist is nodeId, clusterId,  ▼
+ *            status, reason, subsystem        rejected label ──▶ metric_label_dropped_total
+ *   render() ──▶ sorted "# TYPE" plus sample lines ──▶ Prometheus text exposition
+ */
 export type MetricLabels = Record<string, string>;
 
 export type MetricType = "counter" | "gauge";

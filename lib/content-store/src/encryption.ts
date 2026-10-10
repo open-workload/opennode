@@ -1,3 +1,13 @@
+/**
+ * AES-256-GCM encryption for chunk payloads, plus an XOR stub kept alongside it.
+ *
+ *   plaintext ──▶ random 12-byte IV ──▶ createCipheriv ──▶ ciphertext + authTag
+ *   key (32 bytes) ─────────────────┘                     └──▶ EncryptedData
+ *   EncryptedData ──▶ setAuthTag ──▶ createDecipheriv ──▶ plaintext
+ *
+ * StubEncryptor is repeating-key XOR with a zero IV and a zero auth tag, so it
+ * is not encryption; nothing outside this file imports it.
+ */
 import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from "node:crypto";
 
 export interface Encryptor {

@@ -1,3 +1,16 @@
+/**
+ * Backend kind "real_isolated": stages a scratch dir, then spawns a docker CLI run.
+ * Each stage is skipped unless the matching client was injected in options.
+ *
+ *   spec ─▶ scratch dirs ─▶ cgroup ─▶ nftables ─▶ skopeo pull ─▶ secrets ─▶ env.json
+ *                                                                              │
+ *   docker run --rm --network=none --cgroup=... image cmd ──────────────────▶ proc
+ *     stdout+stderr ─▶ outputBytes   exit 0 ─▶ succeeded, non-zero ─▶ failed
+ *
+ *   cancel ─▶ SIGTERM, SIGKILL after 5s    wait ─▶ WorkerResult
+ *   cleanup ─▶ rm scratch, cgroup, nft; tempCreds/imageLayers stay false
+ */
+
 import { spawn, SpawnOptions } from "node:child_process";
 import { mkdtemp, mkdir, writeFile, rm, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";

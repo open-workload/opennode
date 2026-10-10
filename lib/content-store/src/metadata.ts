@@ -1,3 +1,13 @@
+/**
+ * Per-chunk bookkeeping: replication, retention, classification. Records, not storage.
+ *
+ *   owner + options ──▶ createChunkMetadata ──▶ defaults (3 replicas, 30d ttl)
+ *   replica heartbeat ──▶ updateReplicaStatus ──▶ new ChunkMetadata (lastSync = now)
+ *   read ──▶ incrementAccess ──▶ accessCount + lastAccessed
+ *
+ * isRetentionExpired evaluates ttl and count; the "size" policy always returns false.
+ * MetadataStore is declared here and implemented nowhere in this repo.
+ */
 export type ReplicationStrategy = "eager" | "lazy" | "manual";
 export type RetentionPolicy = "ttl" | "count" | "size" | "none";
 

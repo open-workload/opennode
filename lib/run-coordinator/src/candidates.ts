@@ -1,3 +1,14 @@
+/**
+ * Deterministic rendezvous (highest-random-weight) pick of one worker per attempt.
+ *
+ *   members ──▶ eligible ──▶ sha256 score ──▶ nodeId
+ *              filter       per node        (highest)
+ *              caps /
+ *              excluded
+ *
+ * No eligible node throws NO_ELIGIBLE_WORKER. Selection authorizes nothing:
+ * the winner still needs a committed lease with a fencing token.
+ */
 import { sha256Hex } from "@workspace/sync-engine";
 import { RunCoordinatorError } from "./errors";
 

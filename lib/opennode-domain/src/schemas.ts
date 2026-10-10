@@ -1,3 +1,15 @@
+/**
+ * Versioned wire shapes and the constructors that validate them.
+ *
+ *   raw values ──▶ createNodeId | createClusterId | createJobSpec
+ *                       │  createAttempt | createLogChunk | createArtifactRef
+ *                       │  createVote | createClusterEvent
+ *                       ▼  validateIdValue, assertNodeId/assertClusterId, range checks
+ *                   frozen { schemaVersion: 1, ... }
+ *
+ * Shapes only: no storage, no transport, no schema registry. assertNodeId and
+ * assertClusterId are the checks other files lean on.
+ */
 import { DomainError } from "./errors";
 
 export const SCHEMA_VERSION = 1;

@@ -1,3 +1,14 @@
+/**
+ * Cursor paging and address-set diffs over an already-loaded chunk list.
+ *
+ *   base64url cursor ──▶ { index } ──▶ slice ──▶ CursorPage { items, nextCursor, hasMore }
+ *   chunk list ──▶ dedupKey ──▶ drop duplicate ──▶ deduped list
+ *
+ *   local vs remote addresses ──▶ set diff ──▶ { missing, extra }
+ *
+ * Paging is in-memory, so the whole list is already resident. The "replace"
+ * duplicate policy is not implemented; a duplicate is dropped as under "skip".
+ */
 import { ChunkRef, StreamChunk } from "./stream";
 import { ContentStoreError } from "./errors";
 

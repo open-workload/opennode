@@ -1,4 +1,19 @@
 #!/usr/bin/env node
+/**
+ * Commander CLI over the OpenNode HTTP API. Holds a bearer token in
+ * ~/.opennode/credentials.json (dir 0700, file 0600) and prints text output.
+ *
+ *   argv ─▶ program.parseAsync ─▶ subcommand ─▶ apiRequest(path) ─▶ API_BASE + path
+ *     │                                       │
+ *     │                        Authorization: Bearer <token>, only while unexpired
+ *     │                                       │
+ *     │                        !res.ok ─▶ throw Error(body.error) ─▶ exit 1
+ *     │
+ *     login ─▶ write token, 24h TTL      logout ─▶ delete the credentials file
+ *     status / preflight / submit / list / show / cancel / retry / peer-status
+ *     logs --follow ─▶ raw fetch to the SSE stream, decoding `data:` lines
+ */
+
 import { program } from "commander";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";

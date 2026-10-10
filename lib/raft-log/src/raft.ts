@@ -1,3 +1,17 @@
+/**
+ * Raft consensus node: elections, replication, log matching.
+ *
+ *   Follower ──timeout──▶ Candidate ──votes > quorum──▶ Leader
+ *      ▲                     │ │                          │
+ *      │                     │ └── no quorum ──▶ new term  │ AppendEntries every
+ *      │                     │                            │ heartbeatInterval
+ *      └── higher term seen in any RPC ───────────────────┘
+ *
+ *   Leader.propose ──▶ append at lastIndex+1 ──▶ replicateToPeer per peer
+ *        │                                               │
+ *        │      success ──▶ nextIndex/matchIndex ──▶ updateCommitIndex (quorum)
+ *        └──▶ commitIndex ──▶ getCommittedEntries ──▶ onApply callbacks
+ */
 import {
   RaftConfig,
   RaftState,

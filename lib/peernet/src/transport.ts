@@ -1,3 +1,12 @@
+/**
+ * Transport contract for the peer net: typed shapes only, no implementation here.
+ *
+ *   caller ──▶ PeerTransport ──▶ dial / openStream / publish / subscribe
+ *                  │
+ *                  └──▶ InMemoryPeerTransport (only impl; never imported)
+ *
+ * Declarations only. No libp2p node is constructed in this file.
+ */
 import { PeerId } from "@libp2p/interface";
 import { PeerNetError } from "./errors";
 

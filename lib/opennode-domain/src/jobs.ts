@@ -1,3 +1,14 @@
+/**
+ * Job and attempt lifecycle: the two legal-transition tables and the guards on them.
+ *
+ *   queued ──▶ starting ──▶ running ──▶ succeeded | failed
+ *      │           │           │
+ *      └───────────┴───────────┴──▶ cancelled      (via cancel-requested)
+ *   from any live state also ──▶ timed-out | infrastructure-error | lost
+ *
+ * Every other edge throws INVALID_JOB_TRANSITION. Membership is not consulted:
+ * nothing here admits, schedules or executes anything.
+ */
 import { DomainError } from "./errors";
 import {
   createAttempt,

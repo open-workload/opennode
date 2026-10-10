@@ -1,3 +1,15 @@
+/**
+ * Registry of fault points and the dispatch that applies a chosen fault.
+ *
+ *   fault point ──▶ shouldInject ──▶ dispatch by FaultType ──▶ operation
+ *                   enabled?         7 of 11 types act on inject()
+ *                   prob x global    default: run it untouched
+ *
+ * 10 dispatch cases fall through to `default: return operation()`:
+ * inject() leaves partition, message_loss, message_duplication and
+ * message_reordering unhandled; injectSync() also drops timeout and
+ * clock_skew.
+ */
 export enum FaultType {
   Latency = "latency",
   Error = "error",

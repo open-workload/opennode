@@ -1,3 +1,14 @@
+/**
+ * Builds and checks a node handshake record. Nothing here verifies a signature.
+ *
+ *   nodeId + peerId + privateKey ──▶ createHandshake ──▶ signed payload ──▶ record
+ *                                                                          (no callers)
+ *   record ──▶ verifyHandshake ──▶ expectedNodeId? ──▶ reject ──▶ trustedPeerIds?
+ *                │                 reject                    reject
+ *                └──▶ { negotiatedProtocol: 1 }  (hardcoded, not negotiated)
+ *
+ * Called only from inMemory.ts, which nothing imports.
+ */
 import { NodeId } from "@workspace/opennode-domain";
 import { PeerId, PrivateKey } from "@libp2p/interface";
 import { PeerNetError } from "./errors";

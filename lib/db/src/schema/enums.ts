@@ -1,3 +1,16 @@
+/**
+ * Postgres enums shared by the schema tables; declarations only, no behaviour.
+ *
+ *   node_status:   local | connected | offline | leaving | quarantined
+ *   node_role:     validator | worker | observer
+ *   sync_status:   synced | syncing | degraded | local_only
+ *   consensus:     healthy | no_quorum | initializing | local_only
+ *   proposal:      admission | eviction;  pending|approved|rejected|committed|expired
+ *   run:           diagnostic | container;  queued ──▶ succeeded|failed|cancelled|...
+ *   activity_event_kind: node_joined, proposal_committed, run_finished, ...
+ *        │
+ *        └──▶ nodeStatusEnum / runStatusEnum ──▶ pgTable columns across ./schema/*
+ */
 import { pgEnum } from "drizzle-orm/pg-core";
 
 export const nodeStatusEnum = pgEnum("node_status", [

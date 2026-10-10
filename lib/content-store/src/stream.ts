@@ -1,3 +1,12 @@
+/**
+ * Bounded writer that chunks and stores a run's output stream, and its reader.
+ *
+ *   bytes ──▶ count / size / duration guards ──▶ chunker.chunk ──▶ store.put
+ *              │   over any limit: STREAM_EXHAUSTED              └──▶ StreamChunk
+ *   close | truncate ──▶ StreamResult { chunks, totalSize, durationMs, truncated }
+ *
+ *   chunk refs ──▶ store.get ──▶ verifyRef ──▶ unchunk ──▶ yields plaintext
+ */
 import { StoredChunk, ChunkRef, ChunkerOptions, createChunker } from "./chunk";
 import { Encryptor } from "./encryption";
 import { ContentStoreError } from "./errors";

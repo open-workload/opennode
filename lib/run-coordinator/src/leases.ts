@@ -1,3 +1,14 @@
+/**
+ * Lease records, the in-memory registry, and the fencing-token rules.
+ *
+ *   lease record ──▶ validate ──▶ LeaseRegistry ──▶ lease, or stale list
+ *                      │           add / renew               ▲
+ *                      │           fenceOnEpochChange ───────┘
+ *                      bad input
+ *
+ *   Usable = unexpired AND on the current epoch AND not stale. Tokens
+ *   order highest-wins with leaseId as tiebreak, so an older token loses.
+ */
 import { RunCoordinatorError } from "./errors";
 
 export const LEASE_RENEWAL_INTERVAL_MS = 10_000;

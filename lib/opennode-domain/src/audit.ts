@@ -1,3 +1,11 @@
+/**
+ * Builds audit events, then scrubs secret-looking keys before they are stored.
+ *
+ *   eventId + kind + correlation ──▶ validate ids ──▶ frozen AuditEvent
+ *   details ──▶ redactSecrets ──▶ "[redacted]" where the key matches
+ *                │                 secret|token|password|private|credential|api-key
+ *                └──▶ redactAuditEvent ──▶ storable AuditEvent
+ */
 import { DomainError } from "./errors";
 import { SCHEMA_VERSION } from "./schemas";
 
