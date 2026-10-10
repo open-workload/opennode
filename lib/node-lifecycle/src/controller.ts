@@ -1,24 +1,31 @@
 /**
  * Two exit paths for a departing node, each fanning out to injected deps.
  *
- *   voluntary leave ──▶ gate ──▶ drain ──▶ invalidate  ──▶ publish
- *   eviction        ──▶ gate ──▶ revoke ──▶ invalidate  ──▶ quarantine ──▶ retain
- *                                  │                                         │
- *                  audit.record ◀────────────────────────────────────────────┘
- *                        │
- *                        ▼
- *                      NodeLifecycleReport
+ *   voluntary leave ──▶ gate(self) ──▶ drain ──▶ revoke ──▶ invalidate ──▶ quarantine ──▶ publish
+ *   eviction        ──▶ gate(peer) ──▶ revoke ──▶ invalidate ──▶ quarantine ──▶ retain
+ *                                     │                                            │
+ *                   audit.record ◀──────────────────────────────────────────────┘
+ *                         │
+ *                         ▼
+ *                       NodeLifecycleReport
  *
- * Six separate injected steps, not one pipeline: leave drains and publishes
- * but never revokes credentials or quarantines capacity.
+ * Assignment gating is scoped per `(subject, cause)`: stopping one subject never
+ * disables another, so evicting a remote peer leaves the local node accepting
+ * new assignments. `resumeAssignments(subject, cause)` is the documented,
+ * authorized re-enable path; `acceptsNewAssignments()` (no subject) answers for
+ * the process-local node, which only stops on its own voluntary leave.
+ *
+ * Six separate injected steps, not one pipeline: leave drains and publishes, and
+ * both paths revoke the subject's credentials and quarantine its capacity.
  */
 import { metricsRegistry } from "@workspace/observability";
 
 export type LifecycleCause = "voluntary-leave" | "eviction";
 
 export interface AssignmentGate {
-  stopNewAssignments(cause: LifecycleCause, reason?: string): unknown;
-  acceptsNewAssignments(): boolean;
+  stopNewAssignments(subject: string, cause: LifecycleCause, reason?: string): unknown;
+  resumeAssignments(subject: string, cause: LifecycleCause): unknown;
+  acceptsNewAssignments(subject?: string): boolean;
 }
 
 export interface DrainSummary {
@@ -136,14 +143,32 @@ export class DefaultRetentionPolicy implements RetentionPolicy {
 }
 
 export class InMemoryAssignmentGate implements AssignmentGate {
-  private accepting = true;
+  private readonly stoppedBySubject = new Map<string, Set<LifecycleCause>>();
 
-  stopNewAssignments(): void {
-    this.accepting = false;
+  stopNewAssignments(subject: string, cause: LifecycleCause): void {
+    const causes = this.stoppedBySubject.get(subject) ?? new Set<LifecycleCause>();
+    causes.add(cause);
+    this.stoppedBySubject.set(subject, causes);
   }
 
-  acceptsNewAssignments(): boolean {
-    return this.accepting;
+  resumeAssignments(subject: string, cause: LifecycleCause): void {
+    const causes = this.stoppedBySubject.get(subject);
+    if (causes === undefined) return;
+    causes.delete(cause);
+    if (causes.size === 0) this.stoppedBySubject.delete(subject);
+  }
+
+  acceptsNewAssignments(subject?: string): boolean {
+    if (subject !== undefined) {
+      return !this.stoppedBySubject.has(subject);
+    }
+    // Process-local query used by the run admission path. The local node stops
+    // accepting new assignments only through its own voluntary leave; a remote
+    // peer's eviction is scoped to that peer and never disables the local node.
+    for (const causes of this.stoppedBySubject.values()) {
+      if (causes.has("voluntary-leave")) return false;
+    }
+    return true;
   }
 }
 
@@ -206,13 +231,15 @@ export class NodeLifecycleController {
     readonly signerNodeId: string;
     readonly signature: string;
   }): Promise<NodeLifecycleReport> {
-    this.gate.stopNewAssignments("voluntary-leave");
+    this.gate.stopNewAssignments(input.subjectId, "voluntary-leave");
     const drain = await this.drainer.drain();
+    this.credentials.revoke(input.subjectId, "voluntary-leave");
     const leasesInvalidated = await this.leases.invalidate(
       input.subjectId,
       "voluntary-leave",
       this.now(),
     );
+    this.capacity.quarantine(input.subjectId, "voluntary-leave");
     this.leavePublisher?.publishSignedLeaveEvent({
       type: "leave",
       clusterId: input.clusterId,
@@ -232,6 +259,8 @@ export class NodeLifecycleController {
         drained: drain.drained,
         relinquished: drain.relinquished,
         leasesInvalidated,
+        credentialsRevoked: true,
+        capacityQuarantined: true,
       },
     });
     return {
@@ -239,9 +268,9 @@ export class NodeLifecycleController {
       subjectId: input.subjectId,
       stoppedNewAssignments: true,
       drain,
-      credentialsRevoked: false,
+      credentialsRevoked: true,
       leasesInvalidated,
-      capacityQuarantined: false,
+      capacityQuarantined: true,
       retention: Object.freeze([]),
       leavePublished: this.leavePublisher !== undefined,
     };
@@ -251,7 +280,7 @@ export class NodeLifecycleController {
     readonly subjectId: string;
     readonly epoch: number;
   }): Promise<NodeLifecycleReport> {
-    this.gate.stopNewAssignments("eviction");
+    this.gate.stopNewAssignments(input.subjectId, "eviction");
     this.credentials.revoke(input.subjectId, "eviction");
     metricsRegistry.increment("membership.key_revocation_pending");
     const leasesInvalidated = await this.leases.invalidate(
@@ -286,7 +315,21 @@ export class NodeLifecycleController {
     };
   }
 
-  acceptsNewAssignments(): boolean {
-    return this.gate.acceptsNewAssignments();
+  stopNewAssignments(subject: string, cause: LifecycleCause): void {
+    this.gate.stopNewAssignments(subject, cause);
+  }
+
+  /**
+   * Authorized re-enable path: clears a previously stopped `(subject, cause)`
+   * assignment scope so the subject can accept new assignments again. Scoped
+   * exactly like `stopNewAssignments`, so resuming one subject never resumes
+   * another (or the local node).
+   */
+  resumeAssignments(subject: string, cause: LifecycleCause): void {
+    this.gate.resumeAssignments(subject, cause);
+  }
+
+  acceptsNewAssignments(subject?: string): boolean {
+    return this.gate.acceptsNewAssignments(subject);
   }
 }
