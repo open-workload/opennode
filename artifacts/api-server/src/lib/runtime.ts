@@ -1,3 +1,17 @@
+/**
+ * Composition root: builds and wires the api-server's runtime singletons.
+ *
+ *   process.env ──▶ resolveExecutionBackend ──▶ Rootless / IsolatedProcess
+ *        │                                             │
+ *        ▼                                             ▼
+ *   createGovernance ──▶ WorkerRuntime ──▶ executionProvider
+ *        │  (identity, HMAC signer, event log, membership, lifecycle)
+ *        ▼
+ *   getRunCoordinator ──▶ RunCoordinator (quotas, capabilities, audit sink)
+ *
+ * Also owns the in-process log-stream pub/sub (subscribeToLogStream /
+ * emitLogEntry) and gates new assignments while draining.
+ */
 import { randomBytes } from "node:crypto";
 import { DrizzleNodeStore, NodeStoreIdentityKeystore } from "@workspace/node-store";
 import {

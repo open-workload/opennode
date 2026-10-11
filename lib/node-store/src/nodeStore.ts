@@ -1,3 +1,18 @@
+/**
+ * Durable node store: a single Drizzle-backed NodeStore over Postgres.
+ *
+ *   command ──▶ DrizzleNodeStore ──▶ row(s) / page
+ *                    │  or NodeStoreError (NOT_FOUND, INVALID_TRANSITION,
+ *                    └─ IDEMPOTENCY_CONFLICT, INVALID_WORKLOAD, INTERNAL)
+ *
+ * Run lifecycle owned here (terminal set = TERMINAL_STATUSES):
+ *   queued ─▶ starting ─▶ running ─▶ succeeded|failed|timed_out|infra_error
+ *      │         │          │
+ *      └─────────┴──────────┴──▶ cancel_requested ─▶ cancelled
+ *
+ * Each mutation is one tx and appends a checksummed audit row; run logs form a
+ * per-run sequence hash chain checked by verifyRunLogIntegrity.
+ */
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";

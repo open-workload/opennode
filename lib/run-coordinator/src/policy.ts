@@ -1,3 +1,15 @@
+/**
+ * Pure admission check: validate a RunSpec against the cluster QuotaPolicy.
+ *
+ *   RunSpec + QuotaPolicy ──▶ validateRunSpec ──▶ frozen ValidatedRunSpec
+ *                                    │
+ *                           INVALID_RUN_SPEC       (shape: name/mode/command/resources/...)
+ *                           IMAGE_POLICY_VIOLATION (prefix allowlist, digest-pinned)
+ *                           SECRET_REF_VIOLATION   (secretRef prefix allowlist)
+ *                           QUOTA_EXCEEDED         (cpu/memory/disk/duration/output)
+ *
+ * Depends only on its arguments; concurrency limits live in RunCoordinator.validate.
+ */
 import { RunCoordinatorError } from "./errors";
 
 export type SideEffectClass = "idempotent" | "at-least-once" | "exactly-once-external";

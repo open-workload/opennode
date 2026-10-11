@@ -1,3 +1,15 @@
+/**
+ * ExecutionProvider contract and the built-in diagnostic implementation.
+ *
+ *   startRun(run) ──▶ createAttempt(starting) ──▶ timer: running ──▶ timer: succeeded
+ *         │                    │                       │
+ *         │              pending map entry        cancelRun() clears timers
+ *         │                    │                       │
+ *         └── unrealised run ──┴──▶ cancelled ◀────────┘
+ *
+ * cancelRun falls back to the store when no timer entry exists (run not started
+ * on this process). Real container execution lives in WorkerExecutionProvider.
+ */
 import type { NodeStore } from "./nodeStore";
 import type { WorkloadRun } from "@workspace/db";
 
