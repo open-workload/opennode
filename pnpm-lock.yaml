@@ -870,6 +870,9 @@ importers:
       '@workspace/node-store':
         specifier: workspace:*
         version: link:../node-store
+      '@workspace/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@workspace/opennode-domain':
         specifier: workspace:*
         version: link:../opennode-domain
@@ -918,6 +921,9 @@ importers:
       '@workspace/node-store':
         specifier: workspace:*
         version: link:../node-store
+      '@workspace/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@workspace/opennode-domain':
         specifier: workspace:*
         version: link:../opennode-domain
