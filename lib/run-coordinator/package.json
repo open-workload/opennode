@@ -11,7 +11,8 @@
     "@workspace/node-store": "workspace:*",
     "@workspace/opennode-domain": "workspace:*",
     "@workspace/sync-engine": "workspace:*",
-    "@workspace/feature-flags": "workspace:*"
+    "@workspace/feature-flags": "workspace:*",
+    "@workspace/observability": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:"

@@ -13,6 +13,7 @@
     { "path": "../opennode-domain" },
     { "path": "../sync-engine" },
     { "path": "../membership-log" },
-    { "path": "../node-store" }
+    { "path": "../node-store" },
+    { "path": "../observability" }
   ]
 }

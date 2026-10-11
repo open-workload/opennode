@@ -90,28 +90,14 @@ export const KNOWN_UNPRODUCED_ALLOWLIST: readonly string[] = [
   // OPS-03:peer.anomaly_score — owning module is lib/peernet membership;
   // NOT writable: no anomaly-detection concept exists anywhere in lib/peernet.
   'OPS-03:peer.anomaly_score',
-  // OPS-03:run_coordinator.queue_age_ms — owning module is
-  // lib/run-coordinator; concurrent writer owns that module and defers the
-  // producer.
-  'OPS-03:run_coordinator.queue_age_ms',
-  // OPS-03:run_coordinator.lease_ttl_ms — owning module is
-  // lib/run-coordinator; concurrent writer owns that module and defers the
-  // producer.
-  'OPS-03:run_coordinator.lease_ttl_ms',
-  // OPS-03:run_coordinator.duplicate_submissions — owning module is
-  // lib/run-coordinator; concurrent writer owns that module and defers the
-  // producer.
-  'OPS-03:run_coordinator.duplicate_submissions',
   // OPS-03:worker.health_status — owning module is lib/worker-runtime;
-  // concurrent writer owns that module and defers the producer.
+  // NOT writable: the runtime exposes no health/readiness signal and nothing
+  // registers a HealthCheck, so there is no event to instrument.
   'OPS-03:worker.health_status',
   // OPS-03:worker.log_lag_ms — owning module is lib/worker-runtime;
-  // concurrent writer owns that module and defers the producer.
+  // NOT writable: the runtime has no log-streaming backlog measurement; the
+  // log stream is api-server-local and carries no source-side lag.
   'OPS-03:worker.log_lag_ms',
-  // OPS-03:provider.availability — owning module is lib/worker-runtime
-  // (execution provider); concurrent writer owns that module and defers the
-  // producer.
-  'OPS-03:provider.availability',
 ];
 
 export function checkMetricProducers(root: string): GuardResult {

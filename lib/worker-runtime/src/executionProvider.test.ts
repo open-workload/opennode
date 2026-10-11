@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { WorkloadRun } from "@workspace/db";
+import { metricsRegistry } from "@workspace/observability";
 import { WorkerSpecError } from "./errors";
 import { IsolatedProcessBackend } from "./isolatedProcess";
 import { WorkerExecutionProvider, workerSpecFromRun } from "./executionProvider";
@@ -67,6 +68,47 @@ describe("WorkerExecutionProvider", () => {
   it("reports isolated_worker as the execution mode", () => {
     const provider = new WorkerExecutionProvider(new WorkerRuntime(new IsolatedProcessBackend()));
     expect(provider.executionMode).toBe("isolated_worker");
+  });
+});
+
+/** Read an unlabelled sample value out of the shared exposition. */
+function metricValue(name: string): number | undefined {
+  for (const line of metricsRegistry.render().split("\n")) {
+    if (line.startsWith(`${name} `)) return Number(line.slice(name.length + 1));
+  }
+  return undefined;
+}
+
+describe("WorkerExecutionProvider OPS-03 metric producers", () => {
+  const run = makeRun({ image: `alpine:3.19@sha256:${PINNED}` });
+
+  it("sets provider.availability to 1 when the provider starts a run", async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    const provider = new WorkerExecutionProvider({ submit } as unknown as WorkerRuntime);
+
+    await provider.startRun(run);
+
+    expect(metricValue("provider.availability")).toBe(1);
+  });
+
+  it("sets provider.availability to 0 when the runtime rejects the run", async () => {
+    const submit = vi.fn().mockRejectedValue(new Error("backend down"));
+    const provider = new WorkerExecutionProvider({ submit } as unknown as WorkerRuntime);
+
+    await expect(provider.startRun(run)).rejects.toThrow("backend down");
+    expect(metricValue("provider.availability")).toBe(0);
+  });
+
+  it("does not mark the provider unavailable when only the run spec is invalid", async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    const provider = new WorkerExecutionProvider({ submit } as unknown as WorkerRuntime);
+
+    await provider.startRun(run);
+    expect(metricValue("provider.availability")).toBe(1);
+
+    await expect(provider.startRun(makeRun({ image: "alpine:3.19" }))).rejects.toThrow(WorkerSpecError);
+    expect(metricValue("provider.availability")).toBe(1);
+    expect(submit).toHaveBeenCalledTimes(1);
   });
 });
 
