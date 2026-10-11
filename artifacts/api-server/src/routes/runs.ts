@@ -19,7 +19,7 @@ import {
 import { NodeStoreError } from "@workspace/node-store";
 import { RunCoordinatorError, type RunSpec } from "@workspace/run-coordinator";
 import { metricsRegistry } from "@workspace/observability";
-import { executionProvider, nodeStore, acceptsNewAssignments, getRunCoordinator, subscribeToLogStream, emitLogEntry } from "../lib/runtime";
+import { executionProvider, nodeStore, acceptsNewAssignments, getRunCoordinator, subscribeToLogStream, emitLogEntry, containerExecutionAvailable } from "../lib/runtime";
 import { requestId, actorId } from "../middlewares/correlation";
 import { logger } from "../lib/logger";
 
@@ -29,6 +29,7 @@ function toRunSpec(body: {
   readonly name: string;
   readonly mode: "diagnostic" | "container";
   readonly image: string | null;
+  readonly command: readonly string[];
   readonly resources: RunSpec["resources"];
   readonly networkPolicy: RunSpec["networkPolicy"];
 }): RunSpec {
@@ -36,6 +37,7 @@ function toRunSpec(body: {
     name: body.name,
     mode: body.mode === "diagnostic" ? "built-in-diagnostic" : "container",
     image: body.image,
+    command: [...body.command],
     resources: body.resources,
     expectedOutputBytes: 0,
     secretRefs: [],
@@ -104,17 +106,6 @@ router.post("/runs", async (req, res) => {
   const rid = requestId(res);
   const actor = actorId(res) ?? await nodeStore.getLocalNodeId();
   const idempotencyKey = `${actor}:${parsed.data.clientRequestId}`;
-  if (parsed.data.mode === "container") {
-    logger.warn(
-      { requestId: rid, actor, image: parsed.data.image },
-      "container run rejected because no isolated worker backend is configured",
-    );
-    res.status(503).json({
-      error: "Container execution is unavailable on this node. Only the safe diagnostic test runner is enabled.",
-      code: "CONTAINER_BACKEND_UNAVAILABLE",
-    });
-    return;
-  }
   try {
     if (!acceptsNewAssignments()) {
       res.status(409).json({ error: "This node is draining; new assignments are stopped.", code: "DRAINING" });
@@ -199,6 +190,22 @@ router.post("/runs/preflight", async (req, res) => {
       checks.push({ id: "command", label: "Command", status: "warning", detail: "Command is ignored for built-in diagnostic workloads." });
     }
     res.json(PreflightRunResponse.parse({ canSubmit: workloadValid, executionAvailable: true, executionMode: "built_in_diagnostic", checks }));
+    return;
+  }
+
+  if (containerExecutionAvailable) {
+    checks.push({
+      id: "execution",
+      label: "Execution backend",
+      status: "pass",
+      detail: "An isolated rootless worker backend is configured and will execute the container.",
+    });
+    res.json(PreflightRunResponse.parse({
+      canSubmit: workloadValid,
+      executionAvailable: true,
+      executionMode: "isolated_worker",
+      checks,
+    }));
     return;
   }
 

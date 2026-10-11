@@ -36,6 +36,7 @@ export interface RunSpec {
   readonly name: string;
   readonly mode: "built-in-diagnostic" | "container";
   readonly image: string | null;
+  readonly command: readonly string[];
   readonly resources: ResourceLimits;
   readonly expectedOutputBytes: number;
   readonly secretRefs: readonly string[];
@@ -97,6 +98,29 @@ export function validateRunSpec(
       throw new RunCoordinatorError(
         "INVALID_RUN_SPEC",
         "Diagnostic runs must not specify an image.",
+      );
+    }
+  }
+  if (!Array.isArray(spec.command)) {
+    throw new RunCoordinatorError("INVALID_RUN_SPEC", "command must be an array.");
+  }
+  if (spec.command.length > 128) {
+    throw new RunCoordinatorError(
+      "INVALID_RUN_SPEC",
+      "command must have at most 128 items.",
+    );
+  }
+  for (const arg of spec.command) {
+    if (typeof arg !== "string" || arg.trim().length === 0) {
+      throw new RunCoordinatorError(
+        "INVALID_RUN_SPEC",
+        "command items must be non-empty strings.",
+      );
+    }
+    if (arg.length > 4096) {
+      throw new RunCoordinatorError(
+        "INVALID_RUN_SPEC",
+        "command items must be at most 4096 characters.",
       );
     }
   }
@@ -210,6 +234,7 @@ export function validateRunSpec(
   return Object.freeze({
     ...spec,
     resources: Object.freeze({ ...spec.resources }),
+    command: Object.freeze([...spec.command]),
     secretRefs: Object.freeze([...spec.secretRefs]),
     requiredCapabilities: Object.freeze([...spec.requiredCapabilities]),
   });

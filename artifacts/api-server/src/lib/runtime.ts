@@ -31,18 +31,41 @@ import {
   createInMemoryRunLedgerStore,
   type QuotaPolicy,
 } from "@workspace/run-coordinator";
-import { WorkerRuntime, type WorkerEvent } from "@workspace/worker-runtime";
-import { IsolatedProcessBackend } from "@workspace/worker-runtime";
-import { WorkerExecutionProvider } from "@workspace/worker-runtime";
+import {
+  CgroupManager,
+  IsolatedProcessBackend,
+  RootlessBackend,
+  WorkerExecutionProvider,
+  WorkerRuntime,
+  type WorkerEvent,
+} from "@workspace/worker-runtime";
 import { createSecretBroker, MemorySecretStore } from "@workspace/secret-broker";
 import { FeatureFlags } from "@workspace/feature-flags";
+import { logger } from "./logger";
+import { createFaultInjectingBackend } from "./faultInjection";
+import { resolveExecutionBackend } from "./executionBackend";
 
 export const nodeStore = new DrizzleNodeStore();
 
-const workerRuntime = new WorkerRuntime(new IsolatedProcessBackend(), {
+const cgroupManager = new CgroupManager();
+const selectedBackend = resolveExecutionBackend(process.env);
+export const containerExecutionAvailable = selectedBackend.kind !== "isolated_process";
+
+const workerBackend =
+  selectedBackend.kind === "isolated_process"
+    ? new IsolatedProcessBackend()
+    : new RootlessBackend({
+        kind: selectedBackend.kind,
+        installPrefix: selectedBackend.installPrefix,
+        rootfs: selectedBackend.rootfs,
+        cgroupManager,
+      });
+
+const workerRuntime = new WorkerRuntime(createFaultInjectingBackend(workerBackend), {
+  cgroupManager,
   onEvent: (event: WorkerEvent) => {
     if (event.type === "finished") {
-      console.log(`[worker-runtime] Run ${event.runId} finished:`, event.result);
+      logger.info({ runId: event.runId, result: event.result }, "run finished");
       emitLogEntry(event.runId, {
         sequence: Date.now(),
         attempt: 1,
@@ -170,7 +193,10 @@ export async function getRunCoordinator(): Promise<RunCoordinator> {
     store: createInMemoryRunLedgerStore(),
     quotas: RUN_QUOTAS,
     capabilities: [
-      { nodeId: g.localNodeId, capabilities: ["diagnostic"] },
+      {
+        nodeId: g.localNodeId,
+        capabilities: ["diagnostic", ...(containerExecutionAvailable ? ["container"] : [])],
+      },
     ],
     auditSink: {
       record(event) {

@@ -2,7 +2,7 @@ import type { NodeStore } from "./nodeStore";
 import type { WorkloadRun } from "@workspace/db";
 
 export interface ExecutionProvider {
-  readonly executionMode: "built_in_diagnostic";
+  readonly executionMode: "built_in_diagnostic" | "isolated_worker";
   startRun(run: WorkloadRun, opts: { requestId?: string }): Promise<void>;
   cancelRun(runId: string, opts?: { requestId?: string }): Promise<void>;
 }

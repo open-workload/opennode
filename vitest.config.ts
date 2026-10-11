@@ -11,5 +11,14 @@ export default defineConfig({
     exclude: ['**/node_modules/**', '**/dist/**'],
     setupFiles: ['./artifacts/api-server/src/test-setup.ts'],
     passWithNoTests: false,
+    coverage: {
+      provider: 'v8',
+      thresholds: {
+        statements: 42,
+        branches: 36,
+        functions: 37,
+        lines: 43,
+      },
+    },
   },
 });

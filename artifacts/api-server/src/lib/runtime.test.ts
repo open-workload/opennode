@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 process.env.DATABASE_URL ??= "postgresql://opennode:opennode@localhost:5432/opennode_test";
+process.env.OPENNODE_EXECUTION_BACKEND = "userns";
 
 const MIRRORED_RUN_ID = "db-run-1";
 
@@ -74,7 +75,7 @@ vi.mock("@workspace/node-store", () => ({
   NodeStoreIdentityKeystore: nodeStoreModule.FakeIdentityKeystore,
 }));
 
-const { getGovernance, getRunCoordinator, nodeStore } = await import("./runtime");
+const { getGovernance, getRunCoordinator, nodeStore, containerExecutionAvailable } = await import("./runtime");
 
 describe("getRunCoordinator", () => {
   it("mirrors a submitted run into the node store so dbRunId is assigned", async () => {
@@ -86,6 +87,7 @@ describe("getRunCoordinator", () => {
         name: "smoke",
         mode: "built-in-diagnostic",
         image: null,
+        command: [],
         resources: { cpuMilli: 100, memoryMiB: 128, diskMiB: 64, timeoutSeconds: 60 },
         expectedOutputBytes: 0,
         secretRefs: [],
@@ -110,5 +112,33 @@ describe("getRunCoordinator", () => {
     const g = await getGovernance();
     expect(g.localNodeId).toBeTruthy();
     expect(g.signerNodeId).toBe(g.localNodeId);
+  });
+
+  it("advertises the container capability when a rootless backend is configured", async () => {
+    expect(containerExecutionAvailable).toBe(true);
+
+    const coordinator = await getRunCoordinator();
+    const { run } = await coordinator.submit({
+      clientKey: "actor-1:cap-1",
+      actorId: "actor-1",
+      spec: {
+        name: "container-smoke",
+        mode: "container",
+        image: `busybox:1.35@sha256:${"a".repeat(64)}`,
+        command: ["/bin/true"],
+        resources: { cpuMilli: 100, memoryMiB: 128, diskMiB: 64, timeoutSeconds: 60 },
+        expectedOutputBytes: 0,
+        secretRefs: [],
+        requiredCapabilities: ["container"],
+        networkPolicy: "deny_all",
+        sideEffectClass: "at-least-once",
+        tenantId: "default",
+        projectId: "default",
+      },
+      correlationId: "req-cap",
+      now: Date.now(),
+    });
+
+    expect(run.runId).toBeTruthy();
   });
 });
