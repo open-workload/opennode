@@ -1,3 +1,18 @@
+/**
+ * Owns one committed run from submission through lease, report, and cleanup.
+ *
+ *   submit ──▶ run.submitted ──▶ queued
+ *   acquireLease ──▶ run.lease_granted ──▶ scheduled  (fencing token = log height)
+ *   observeAttempt ──▶ run.attempt_observed ──▶ running / terminal
+ *   renewLease ──▶ run.lease_renewed
+ *   cancel / retry ──▶ run.cancel_requested | run.retry_requested
+ *   reconcile ──▶ run.attempt_fenced ──▶ lost ──▶ queued (retryable)
+ *        │
+ *        └──▶ metricsRegistry: duplicate_submissions, queue_age_ms, lease_ttl_ms
+ *
+ *   applyFromLog replays the committed event log; the log is authoritative.
+ */
+import { metricsRegistry } from "@workspace/observability";
 import {
   ClusterId,
   ClusterEvent,
@@ -424,6 +439,7 @@ export class RunCoordinator {
     const existing = state.runs.find((r) => r.runId === runId);
     if (existing !== undefined) {
       if (existing.payloadHash === payloadHash) {
+        metricsRegistry.increment("run_coordinator.duplicate_submissions");
         return { run: existing, created: false };
       }
       throw new RunCoordinatorError(
@@ -702,6 +718,12 @@ export class RunCoordinator {
     const runTimeoutMs = run.spec.resources.timeoutSeconds * 1000;
     const elapsedMs = input.now - run.createdAt;
     const leaseTtlMs = computeLeaseTtl(runTimeoutMs, elapsedMs);
+    metricsRegistry.set("run_coordinator.lease_ttl_ms", leaseTtlMs);
+    // First assignment: createdAt is the queue-entry time, so the age at
+    // assignment is exactly the time the run waited in the queue.
+    if (attempt === 1) {
+      metricsRegistry.set("run_coordinator.queue_age_ms", elapsedMs);
+    }
     const leaseId = `lease-${input.runId}-${attempt}`;
     const expiresAt = input.now + leaseTtlMs;
     const height = await this.eventLog.getHeight();
@@ -931,6 +953,7 @@ export class RunCoordinator {
     const runTimeoutMs = run.spec.resources.timeoutSeconds * 1000;
     const elapsedMs = input.now - run.createdAt;
     const leaseTtlMs = computeLeaseTtl(runTimeoutMs, elapsedMs);
+    metricsRegistry.set("run_coordinator.lease_ttl_ms", leaseTtlMs);
     const newExpiresAt = input.now + leaseTtlMs;
     const height = await this.eventLog.getHeight();
     const payload: RunLeaseRenewedPayload = {

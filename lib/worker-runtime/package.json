@@ -11,7 +11,8 @@
     "@workspace/node-store": "workspace:*",
     "@workspace/content-store": "workspace:*",
     "@workspace/secret-broker": "workspace:*",
-    "@workspace/opennode-domain": "workspace:*"
+    "@workspace/opennode-domain": "workspace:*",
+    "@workspace/observability": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

@@ -14,6 +14,7 @@
     { "path": "../opennode-domain" },
     { "path": "../node-store" },
     { "path": "../content-store" },
+    { "path": "../observability" },
     { "path": "../secret-broker" }
   ]
 }

@@ -1,5 +1,18 @@
+/**
+ * Adapts a persisted WorkloadRun to the worker runtime's WorkerSpec contract.
+ *
+ *   WorkloadRun ──▶ workerSpecFromRun ──▶ WorkerSpec (pinned image + limits)
+ *                        │ unpinned image
+ *                        └──▶ WorkerSpecError
+ *
+ *   WorkerExecutionProvider.startRun ──▶ runtime.submit ──▶ provider.availability = 1
+ *                    │ runtime rejects
+ *                    └────────────────────────────────▶ provider.availability = 0
+ *   cancelRun ──▶ runtime.cancel("cancelled")
+ */
 import type { WorkloadRun } from "@workspace/db";
 import type { ExecutionProvider } from "@workspace/node-store";
+import { metricsRegistry } from "@workspace/observability";
 import { WorkerSpecError } from "./errors";
 import { WorkerRuntime } from "./runtime";
 import type { ImagePin, WorkerSpec } from "./spec";
@@ -54,7 +67,14 @@ export class WorkerExecutionProvider implements ExecutionProvider {
   constructor(private readonly runtime: WorkerRuntime) {}
 
   async startRun(run: WorkloadRun, opts: { requestId?: string }): Promise<void> {
-    await this.runtime.submit(workerSpecFromRun(run));
+    const spec = workerSpecFromRun(run);
+    try {
+      await this.runtime.submit(spec);
+      metricsRegistry.set("provider.availability", 1);
+    } catch (error) {
+      metricsRegistry.set("provider.availability", 0);
+      throw error;
+    }
   }
 
   async cancelRun(runId: string, opts?: { requestId?: string }): Promise<void> {
