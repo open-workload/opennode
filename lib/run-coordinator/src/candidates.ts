@@ -3,8 +3,10 @@
  *
  *   members ──▶ eligible ──▶ sha256 score ──▶ nodeId
  *              filter       per node        (highest)
- *              caps /
- *              excluded
+ *              by caps
+ *
+ * Exclusions are not this module's concern: they derive from the capacity
+ * view (capacityView.ts), never from a caller-supplied parameter.
  *
  * No eligible node throws NO_ELIGIBLE_WORKER. Selection authorizes nothing:
  * the winner still needs a committed lease with a fencing token.
@@ -27,16 +29,13 @@ export function eligibleCandidates(input: {
   readonly members: readonly string[];
   readonly capabilities: readonly NodeCapability[];
   readonly requiredCapabilities: readonly string[];
-  readonly excludedNodeIds?: readonly string[];
 }): readonly string[] {
   const byNode = new Map<string, readonly string[]>();
   for (const entry of input.capabilities) {
     byNode.set(entry.nodeId, entry.capabilities);
   }
-  const excluded = new Set(input.excludedNodeIds ?? []);
   const eligible: string[] = [];
   for (const nodeId of input.members) {
-    if (excluded.has(nodeId)) continue;
     const caps = byNode.get(nodeId);
     if (caps === undefined) continue;
     if (
@@ -62,7 +61,6 @@ export function selectCandidate(input: {
   readonly members: readonly string[];
   readonly capabilities: readonly NodeCapability[];
   readonly requiredCapabilities: readonly string[];
-  readonly excludedNodeIds?: readonly string[];
 }): string {
   const eligible = eligibleCandidates(input);
   if (eligible.length === 0) {

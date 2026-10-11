@@ -43,6 +43,7 @@ import {
   LifecycleCause,
 } from "@workspace/node-lifecycle";
 import { createDeterministicSignatureScheme } from "@workspace/peernet";
+import assert from "node:assert/strict";
 
 const CLUSTER_ID = createClusterId("test-cluster");
 const NODE_A_SECRET = "node-a-secret-key-12345678901234567890123456789012";
@@ -160,8 +161,8 @@ async function runSmokeTest() {
 
   state = await membershipLog.getState();
   console.log(`State after admission: epoch=${state.epoch}, members=${state.memberIds.join(", ")}`);
-  console.assert(state.memberIds.includes(NODE_A.value), "Node A should be member");
-  console.assert(state.memberIds.includes(NODE_B.value), "Node B should be member");
+  assert(state.memberIds.includes(NODE_A.value), "Node A should be member");
+  assert(state.memberIds.includes(NODE_B.value), "Node B should be member");
   console.log("✓ 2-Peer Join passed\n");
 
   // 2. MEMBERSHIP CHANGE (add a third node for testing, then remove)
@@ -184,7 +185,7 @@ async function runSmokeTest() {
 
   state = await membershipLog.getState();
   console.log(`State after adding C: epoch=${state.epoch}, members=${state.memberIds.join(", ")}`);
-  console.assert(state.memberIds.length === 3, "Should have 3 members");
+  assert(state.memberIds.length === 3, "Should have 3 members");
   console.log("✓ Membership add passed\n");
 
   // 3. RUN SUBMISSION
@@ -207,7 +208,7 @@ async function runSmokeTest() {
   console.log("--- 4. Execution (Lease Validation) ---");
   const isStale = (lease: LeaseRecord, epoch: number, now: number) =>
     lease.membershipEpoch !== epoch || lease.expiresAt <= now;
-  console.assert(!isStale(lease, state.epoch, Date.now()), "Lease should be valid");
+  assert(!isStale(lease, state.epoch, Date.now()), "Lease should be valid");
   console.log(`Lease valid for epoch ${state.epoch}: true`);
   console.log("✓ Execution (lease check) passed\n");
 
@@ -256,8 +257,8 @@ async function runSmokeTest() {
   });
   state = await membershipLog.getState();
   console.log(`State after C leaves: epoch=${state.epoch}, members=${state.memberIds.join(", ")}`);
-  console.assert(!state.memberIds.includes(NODE_C.value), "Node C should be removed");
-  console.assert(state.memberIds.length === 2, "Should have 2 members");
+  assert(!state.memberIds.includes(NODE_C.value), "Node C should be removed");
+  assert(state.memberIds.length === 2, "Should have 2 members");
   console.log("✓ Voluntary Leave passed\n");
 
   // 8. EVICTION (Node B evicted)
@@ -277,8 +278,8 @@ async function runSmokeTest() {
 
   state = await membershipLog.getState();
   console.log(`State after eviction: epoch=${state.epoch}, members=${state.memberIds.join(", ")}`);
-  console.assert(!state.memberIds.includes(NODE_B.value), "Node B should be removed");
-  console.assert(state.memberIds.length === 1, "Should have 1 member");
+  assert(!state.memberIds.includes(NODE_B.value), "Node B should be removed");
+  assert(state.memberIds.length === 1, "Should have 1 member");
 
   // Test lease fencing on epoch change
   const fencedLeases = membershipLog.leases.fenceOnEpochChange(state.epoch, Date.now());
@@ -290,25 +291,25 @@ async function runSmokeTest() {
     epoch: state.epoch,
   });
   console.log(`Lifecycle report: stoppedAssignments=${lifecycleReport.stoppedNewAssignments}, quarantined=${lifecycleReport.capacityQuarantined}, credentialsRevoked=${lifecycleReport.credentialsRevoked}`);
-  console.assert(lifecycleReport.capacityQuarantined, "Node should be quarantined");
-  console.assert(lifecycleReport.credentialsRevoked, "Credentials should be revoked");
+  assert(lifecycleReport.capacityQuarantined, "Node should be quarantined");
+  assert(lifecycleReport.credentialsRevoked, "Credentials should be revoked");
   console.log("✓ Eviction passed\n");
 
   // FEATURE FLAGS KILL SWITCH TEST
   console.log("--- Feature Flags Kill Switch ---");
-  console.assert(ff.isNewExecutionAllowed() === true, "Should allow new runs initially");
+  assert(ff.isNewExecutionAllowed() === true, "Should allow new runs initially");
   ff.activateKillSwitch("emergency", "operator-1");
-  console.assert(ff.isNewExecutionAllowed() === false, "Kill switch should block new runs");
+  assert(ff.isNewExecutionAllowed() === false, "Kill switch should block new runs");
   console.log("Kill switch activated, new runs blocked");
   ff.deactivateKillSwitch();
-  console.assert(ff.isNewExecutionAllowed() === true, "Should allow new runs after deactivate");
+  assert(ff.isNewExecutionAllowed() === true, "Should allow new runs after deactivate");
   console.log("✓ Feature Flags Kill Switch passed\n");
 
   // RECONCILIATION TEST
   console.log("--- Reconciliation ---");
   const reconciled = await membershipLog.reconcile(Date.now());
   console.log(`Reconciled state: epoch=${reconciled.epoch}, members=${reconciled.memberIds.join(", ")}`);
-  console.assert(reconciled.epoch === state.epoch, "Reconciled epoch should match");
+  assert(reconciled.epoch === state.epoch, "Reconciled epoch should match");
   console.log("✓ Reconciliation passed\n");
 
   console.log("=== ALL SMOKE TESTS PASSED ===");

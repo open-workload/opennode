@@ -1,16 +1,21 @@
 /**
  * Membership governance routes: proposals, ballots, and voluntary leave.
  *
- *   POST /membership/proposals ─▶ eviction gated by flag (off ─▶ 409) ─▶ open, 24h TTL
- *   POST .../:id/votes ─▶ sign the canonical ballot (epoch, choice, revision) ─▶ castVote
+ *   POST /membership/proposals ─▶ requireRoleFor(createMembershipProposal)
+ *                                 (operator, 403 before any state read) ─▶ eviction
+ *                                 gated by flag (off ─▶ 409) ─▶ open, 24h TTL
+ *   POST .../:id/votes ─▶ requireRoleFor(castMembershipVote) ─▶ sign the canonical
+ *                                 ballot (epoch, choice, revision) ─▶ castVote
  *
  *   pending ─┬─ threshold met ─▶ passed ─▶ finalizePassed ─▶ committed, epoch++
  *             ├─ invalidated / rejected ─▶ rejected        └─▶ log, lifecycle, fencing
  *             └─ TTL elapsed ─▶ expired                        and, for admission,
  *                                                             a membership credential
  *
- *   POST /membership/leave ─▶ leave flag ─▶ count active runs ─▶ epoch++ ─▶ 202 leaving
- *   DomainError ─▶ 404 unknown | 400 invalid | 409 conflict; anything else ─▶ 500
+ *   POST /membership/leave ─▶ requireRoleFor(requestNodeLeave) ─▶ leave flag ─▶
+ *                                 count active runs ─▶ epoch++ ─▶ 202 leaving
+ *   DomainError ─▶ errorTaxonomy (category + status, 404 unknown | 400 validation |
+ *                 403 authorization | 409 decision); else ─▶ 500
  */
 
 import { randomUUID } from "node:crypto";
@@ -35,6 +40,8 @@ import {
   nodeStore,
   type GovernanceRuntime,
 } from "../lib/runtime";
+import { mapDomainError } from "../lib/errorTaxonomy";
+import { requireRoleFor } from "../middlewares/requireRole";
 import { requestId, actorId } from "../middlewares/correlation";
 import { logger } from "../lib/logger";
 
@@ -101,14 +108,11 @@ function proposalResponse(g: GovernanceRuntime, proposalId: string) {
 
 function handleProposalError(res: Response, err: unknown): void {
   if (err instanceof DomainError) {
-    const notFound = err.code === "PROPOSAL_NOT_FOUND";
-    const clientError =
-      err.code.startsWith("INVALID_") ||
-      err.code === "DUPLICATE_RESPONSE" ||
-      err.code === "VOLUNTARY_LEAVE_REQUIRES_NO_VOTE";
-    res.status(notFound ? 404 : clientError ? 400 : 409).json({
-      error: err.message,
-      code: err.code,
+    const mapped = mapDomainError(err);
+    res.status(mapped.status).json({
+      error: mapped.error,
+      code: mapped.code,
+      category: mapped.category,
     });
     return;
   }
@@ -188,7 +192,7 @@ router.get("/membership/proposals", async (req, res) => {
   void req;
 });
 
-router.post("/membership/proposals", async (req, res) => {
+router.post("/membership/proposals", requireRoleFor("createMembershipProposal"), async (req, res) => {
   const parsed = CreateMembershipProposalBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid proposal", code: parsed.error.issues[0]?.message });
@@ -248,7 +252,7 @@ router.get("/membership/proposals/:proposalId", async (req, res) => {
   }
 });
 
-router.post("/membership/proposals/:proposalId/votes", async (req, res) => {
+router.post("/membership/proposals/:proposalId/votes", requireRoleFor("castMembershipVote"), async (req, res) => {
   const parsed = CastMembershipVoteBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid vote", code: parsed.error.issues[0]?.message });
@@ -327,7 +331,7 @@ router.post("/membership/proposals/:proposalId/respond", async (req, res) => {
   }
 });
 
-router.post("/membership/leave", async (req, res) => {
+router.post("/membership/leave", requireRoleFor("requestNodeLeave"), async (req, res) => {
   const parsed = RequestNodeLeaveBody.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid leave request", code: parsed.error.issues[0]?.message });

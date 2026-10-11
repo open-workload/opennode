@@ -1114,7 +1114,7 @@ export class RunCoordinator {
           name: run.spec.name,
           mode: run.spec.mode === "container" ? "container" : "diagnostic",
           image: run.spec.image,
-          command: [],
+          command: [...run.spec.command],
           resources: {
             cpuMilli: resourceLimits.cpuMilli,
             memoryMiB: resourceLimits.memoryMiB,

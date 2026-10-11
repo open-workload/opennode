@@ -2,10 +2,15 @@
  * Second broker implementation: branded types, correlation IDs, throwing
  * errors. Imported only by worker-runtime, which nothing constructs.
  *
- *   issue / revoke / get + CorrelationIds ──▶ assert* ──▶ store op
- *                                              │           │
- *                                              │       audit.write
- *                                              ▼
+ *   issue / revoke + CorrelationIds ──▶ assert* ──▶ store op ──▶ audit.write
+ *
+ *   get + CorrelationIds ──▶ assert* ──▶ capability gate ──▶ store.get ──▶ audit.write
+ *                                          │  assert capability shape
+ *                                          │  verify signature over issuer NodeId
+ *                                          │  not expired / within identity window
+ *                                          │  runId / attemptOrdinal / workerNodeId match
+ *                                          └─ any fail ──▶ get_denied audit + throw
+ *
  *   frozen { issue, revoke, get } ──▶ SecretBrokerError on any failure
  *
  * Denials throw here rather than returning null, unlike src/index.ts.
@@ -18,18 +23,21 @@ import {
   IssueSecretInput,
   RevokeSecretInput,
   GetSecretInput,
+  LeaseBoundCapability,
   AuditEventDetails,
   assertSecretId,
   assertJobScope,
   assertWorkerIdentity,
+  assertLeaseBoundCapability,
   isWorkerIdentityValid,
+  leaseCapabilityMessage,
 } from "./types";
 import {
   SecretBrokerError,
   SecretBrokerErrorCode,
   isSecretBrokerError,
 } from "./errors";
-import { createAuditEvent, CorrelationIds, AuditEvent } from "@workspace/opennode-domain";
+import { createAuditEvent, CorrelationIds, AuditEvent, NodeId } from "@workspace/opennode-domain";
 
 export interface SecretStore {
   put(input: IssueSecretInput): Promise<void>;
@@ -51,12 +59,13 @@ export interface SecretBroker {
 export interface SecretBrokerConfig {
   store: SecretStore;
   audit: AuditSink;
+  verifyCapability: (issuer: NodeId, message: string, signature: string) => boolean;
   defaultTtlMs?: number;
   maxTtlMs?: number;
 }
 
 export function createSecretBroker(config: SecretBrokerConfig): SecretBroker {
-  const { store, audit, defaultTtlMs = 3600000, maxTtlMs = 86400000 } = config;
+  const { store, audit, verifyCapability, defaultTtlMs = 3600000, maxTtlMs = 86400000 } = config;
 
   async function writeAudit(details: AuditEventDetails, correlation: CorrelationIds): Promise<void> {
     const event = createAuditEvent({
@@ -140,6 +149,49 @@ export function createSecretBroker(config: SecretBrokerConfig): SecretBroker {
     assertWorkerIdentity(input.workerIdentity);
 
     const now = Date.now();
+
+    async function denyUnauthorized(message: string): Promise<never> {
+      await writeAudit(
+        {
+          secretId: input.secretId.value,
+          jobId: input.jobScope.jobId,
+          attemptId: input.jobScope.attemptId,
+          workerNodeId: input.workerIdentity.workerNodeId.value,
+          action: "get_denied",
+          success: false,
+          errorCode: "UNAUTHORIZED_WORKER",
+        },
+        correlation,
+      );
+      throw new SecretBrokerError("UNAUTHORIZED_WORKER", message);
+    }
+
+    const capability: LeaseBoundCapability = input.capability;
+    try {
+      assertLeaseBoundCapability(capability);
+    } catch {
+      await denyUnauthorized("Lease-bound capability is missing or malformed.");
+    }
+
+    if (!verifyCapability(input.issuerNodeId, leaseCapabilityMessage(capability), input.capabilitySignature)) {
+      await denyUnauthorized("Lease-bound capability signature is invalid.");
+    }
+    if (capability.expiresAt <= now) {
+      await denyUnauthorized("Lease-bound capability has expired.");
+    }
+    if (capability.expiresAt > input.workerIdentity.expiresAt) {
+      await denyUnauthorized("Lease-bound capability outlives the worker identity window.");
+    }
+    if (capability.runId !== input.jobScope.jobId) {
+      await denyUnauthorized("Lease-bound capability is bound to a different run.");
+    }
+    if (capability.attemptOrdinal !== input.jobScope.attemptId) {
+      await denyUnauthorized("Lease-bound capability is bound to a different attempt.");
+    }
+    if (capability.workerNodeId.value !== input.workerIdentity.workerNodeId.value) {
+      await denyUnauthorized("Lease-bound capability is bound to a different worker node.");
+    }
+
     if (!isWorkerIdentityValid(input.workerIdentity, now)) {
       await writeAudit(
         {
@@ -213,6 +265,7 @@ export type {
   SecretId,
   JobScope,
   WorkerIdentity,
+  LeaseBoundCapability,
   SecretRef,
   SecretValue,
   IssueSecretInput,
@@ -225,8 +278,11 @@ export {
   createJobScope,
   createWorkerIdentity,
   createSecretRef,
+  createLeaseBoundCapability,
   assertSecretId,
   assertJobScope,
   assertWorkerIdentity,
+  assertLeaseBoundCapability,
   isWorkerIdentityValid,
+  leaseCapabilityMessage,
 } from "./types";

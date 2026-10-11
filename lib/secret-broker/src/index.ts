@@ -1,3 +1,5 @@
+import { metricsRegistry } from "@workspace/observability";
+
 /**
  * Job-scoped secret broker. This is the wired copy: api-server runtime.ts
  * instantiates it through the package's "." export.
@@ -99,6 +101,10 @@ export function createSecretBroker(
           success: false,
         });
         return null;
+      }
+
+      if (entry.expiresAt < now) {
+        metricsRegistry.increment("secret_broker.expired_credentials");
       }
 
       if (entry.revoked || entry.expiresAt < now) {

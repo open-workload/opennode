@@ -62,6 +62,7 @@ import membershipRouter, { issuedMembershipCredentials } from "./membership";
 
 let server: Server;
 let baseUrl: string;
+let currentRoles: string[] = ["admin"];
 
 async function castVote(proposalId: string, choice: "yes" | "no"): Promise<Response> {
   return fetch(`${baseUrl}/membership/proposals/${proposalId}/votes`, {
@@ -74,6 +75,15 @@ async function castVote(proposalId: string, choice: "yes" | "no"): Promise<Respo
 beforeAll(async () => {
   const app = express();
   app.use(express.json());
+  app.use((req, _res, next) => {
+    (req as { auth?: unknown }).auth = {
+      userId: "user_test",
+      sessionId: "session_test",
+      actorId: "user_test",
+      claims: { roles: currentRoles },
+    };
+    next();
+  });
   app.use(membershipRouter);
   await new Promise<void>((resolve) => {
     server = app.listen(0, () => resolve());
@@ -89,6 +99,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  currentRoles = ["admin"];
   mocks.getGovernance.mockResolvedValue(mocks.g);
   mocks.getFeatureFlags.mockReturnValue({
     isEvictionEnabled: () => true,
@@ -218,5 +229,28 @@ describe("membership routes", () => {
     expect(mocks.g.membershipLog.commitLeave).toHaveBeenCalledTimes(1);
     expect(mocks.fenceOnMembershipChange).toHaveBeenCalledTimes(1);
     expect(mocks.g.membershipLog.issueMembershipCredential).not.toHaveBeenCalled();
+  });
+
+  it("denies a vote below the operator role with 403 FORBIDDEN before any state is read", async () => {
+    currentRoles = ["viewer"];
+
+    const res = await castVote("proposal-1", "yes");
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: "FORBIDDEN" });
+    expect(mocks.g.membershipService.getProposal).not.toHaveBeenCalled();
+    expect(mocks.g.membershipService.castVote).not.toHaveBeenCalled();
+  });
+
+  it("denies a leave request below the operator role with 403 FORBIDDEN", async () => {
+    currentRoles = [];
+
+    const res = await fetch(`${baseUrl}/membership/leave`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason: "retiring" }),
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: "FORBIDDEN" });
+    expect(mocks.g.lifecycle.handleVoluntaryLeave).not.toHaveBeenCalled();
   });
 });

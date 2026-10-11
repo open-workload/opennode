@@ -11,6 +11,7 @@
   "include": ["src"],
   "references": [
     { "path": "../opennode-domain" },
-    { "path": "../sync-engine" }
+    { "path": "../sync-engine" },
+    { "path": "../observability" }
   ]
 }

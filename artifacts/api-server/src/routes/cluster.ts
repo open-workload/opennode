@@ -2,14 +2,16 @@
  * Read-only cluster views: node inventory, activity feed, dashboard rollup.
  * Reached only after the auth + same-origin + correlation chain in app.ts.
  *
- *   GET /nodes ──────────────▶ nodeStore.listNodes ─▶ ListNodesResponse.parse ─▶ 200
- *   GET /activity?limit ─────▶ safeParse ─▶ listActivity(limit) ─▶ 200, else 400
- *   GET /dashboard/summary ──▶ 7 nodeStore reads in parallel; clusterId falls back
- *                              to getGovernance() when metadata is absent. starting
- *                              folds into running, timed_out and
- *                              infrastructure_error fold into failed.
+ *   GET /nodes ──────────────▶ requireRoleFor(listNodes) (viewer) ─▶ nodeStore.listNodes
+ *                              ─▶ ListNodesResponse.parse ─▶ 200
+ *   GET /activity?limit ─────▶ requireRoleFor(listActivity) ─▶ safeParse ─▶
+ *                              listActivity(limit) ─▶ 200, else 400
+ *   GET /dashboard/summary ──▶ requireRoleFor(getDashboardSummary) ─▶ 7 nodeStore
+ *                              reads in parallel; clusterId falls back to
+ *                              getGovernance() when metadata is absent.
  *
- *   Any store throw ─▶ log ─▶ 500 INTERNAL. No route here mutates state.
+ *   Authorization runs before any store read: a denial is 403 FORBIDDEN and no
+ *   nodeStore method is called. Any store throw ─▶ log ─▶ 500 INTERNAL.
  */
 
 import { Router, type IRouter, type Response } from "express";
@@ -20,6 +22,7 @@ import {
   ListNodesResponse,
 } from "@workspace/api-zod";
 import { getGovernance, nodeStore } from "../lib/runtime";
+import { requireRoleFor } from "../middlewares/requireRole";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -29,7 +32,7 @@ function handleError(res: Response, err: unknown): void {
   res.status(500).json({ error: "Internal error", code: "INTERNAL" });
 }
 
-router.get("/nodes", async (_req, res) => {
+router.get("/nodes", requireRoleFor("listNodes"), async (_req, res) => {
   try {
     const nodes = await nodeStore.listNodes();
     const items = nodes.map((node) => ({
@@ -50,7 +53,7 @@ router.get("/nodes", async (_req, res) => {
   }
 });
 
-router.get("/activity", async (req, res) => {
+router.get("/activity", requireRoleFor("listActivity"), async (req, res) => {
   const parsed = ListActivityQueryParams.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid query", code: parsed.error.issues[0]?.message });
@@ -64,7 +67,7 @@ router.get("/activity", async (req, res) => {
   }
 });
 
-router.get("/dashboard/summary", async (_req, res) => {
+router.get("/dashboard/summary", requireRoleFor("getDashboardSummary"), async (_req, res) => {
   try {
     const [metadata, nodes, statusCounts, pendingProposalCount, localNodeId, runPage, recentActivity] =
       await Promise.all([

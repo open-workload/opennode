@@ -14,6 +14,7 @@
     "@workspace/opennode-domain": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "@workspace/peernet": "workspace:*"
   }
 }

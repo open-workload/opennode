@@ -11,6 +11,9 @@
  *        │                                               │
  *        │      success ──▶ nextIndex/matchIndex ──▶ updateCommitIndex (quorum)
  *        └──▶ commitIndex ──▶ getCommittedEntries ──▶ onApply callbacks
+ *
+ *   becomes leader/follower or an election fails ──▶ consensus.quorum_available
+ *   propose appends / commit advances / heartbeat ──▶ consensus.proposal_age_ms
  */
 import {
   RaftConfig,
@@ -27,6 +30,7 @@ import {
   RaftStorage,
 } from "./types";
 import { SignedLogEntry } from "@workspace/sync-engine";
+import { metricsRegistry } from "@workspace/observability";
 import { randomUUID } from "crypto";
 
 export class RaftNode {
@@ -48,6 +52,7 @@ export class RaftNode {
 
   private nextIndex: Map<string, number> = new Map();
   private matchIndex: Map<string, number> = new Map();
+  private lastProposalAt: number | null = null;
 
   constructor(config: RaftConfig, storage: RaftStorage, transport: RaftTransport) {
     this.config = config;
@@ -108,6 +113,8 @@ export class RaftNode {
     await this.storage.appendEntries([newEntry]);
     this.nextIndex.set(this.config.nodeId, newEntry.index + 1);
     this.matchIndex.set(this.config.nodeId, newEntry.index);
+    this.lastProposalAt = Date.now();
+    metricsRegistry.set("consensus.proposal_age_ms", 0, { nodeId: this.config.nodeId });
 
     await this.replicate();
     return newEntry;
@@ -182,6 +189,7 @@ export class RaftNode {
     }
 
     if (this.state === "candidate") {
+      metricsRegistry.set("consensus.quorum_available", 0, { nodeId: this.config.nodeId });
       this.resetElectionTimer();
     }
   }
@@ -189,6 +197,7 @@ export class RaftNode {
   private async becomeLeader(): Promise<void> {
     this.state = "leader";
     this.leaderId = this.config.nodeId;
+    metricsRegistry.set("consensus.quorum_available", 1, { nodeId: this.config.nodeId });
 
     const lastIndex = await this.storage.getLastIndex();
     for (const peer of this.config.peers) {
@@ -209,6 +218,7 @@ export class RaftNode {
     await this.storage.setTerm(term);
     this.votedFor = null;
     this.leaderId = null;
+    metricsRegistry.set("consensus.quorum_available", 0, { nodeId: this.config.nodeId });
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
@@ -217,6 +227,11 @@ export class RaftNode {
   }
 
   private async sendHeartbeats(): Promise<void> {
+    if (this.lastProposalAt !== null) {
+      metricsRegistry.set("consensus.proposal_age_ms", Date.now() - this.lastProposalAt, {
+        nodeId: this.config.nodeId,
+      });
+    }
     await this.replicate();
   }
 
@@ -269,6 +284,10 @@ export class RaftNode {
     const newCommitIndex = indices[majority - 1];
 
     if (newCommitIndex > this.commitIndex) {
+      if (this.lastProposalAt !== null) {
+        this.lastProposalAt = null;
+        metricsRegistry.set("consensus.proposal_age_ms", 0, { nodeId: this.config.nodeId });
+      }
       const term = await this.storage.getTerm(newCommitIndex);
       if (term === this.currentTerm) {
         this.commitIndex = newCommitIndex;

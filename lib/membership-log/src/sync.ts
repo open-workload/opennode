@@ -4,6 +4,10 @@
  *   peer claim ──▶ membershipLog.reconcilePeer ──┬── consistent ──▶ skip catch-up
  *        │                                       └── otherwise ──▶ runCatchUp
  *        │                                                            (local, source)
+ *        │                                                                │
+ *        │                                            ok▶ sync.catchup_lag = final − start
+ *        │                                                sync.error_rate = 0
+ *        │                                                error▶ sync.error_rate = 1 ──▶ rethrow
  *        ▼                                                                │
  *   membershipLog.reconcile(now) ◀─────────────────────────────────────────┘
  *        │
@@ -24,6 +28,7 @@ import {
   runCatchUp,
   type CatchUpResult,
 } from "@workspace/sync-engine";
+import { metricsRegistry } from "@workspace/observability";
 import { MembershipLog, PeerMembershipClaim, ReconcileResult } from "./core";
 
 export interface MembershipSyncResult {
@@ -56,7 +61,7 @@ export async function syncMembershipFromPeer(opts: {
   readonly chunkSize?: number;
 }): Promise<MembershipSyncResult> {
   const reconcile = await opts.membershipLog.reconcilePeer(opts.claim);
-  const catchUp =
+  const catchUp: CatchUpResult | null =
     reconcile.status === "consistent"
       ? null
       : await runCatchUp({
@@ -67,7 +72,14 @@ export async function syncMembershipFromPeer(opts: {
           verifier: opts.verifier,
           ...(opts.peers === undefined ? {} : { peers: opts.peers }),
           ...(opts.chunkSize === undefined ? {} : { chunkSize: opts.chunkSize }),
+        }).catch((error: unknown) => {
+          metricsRegistry.set("sync.error_rate", 1);
+          throw error;
         });
+  if (catchUp !== null) {
+    metricsRegistry.set("sync.error_rate", 0);
+    metricsRegistry.set("sync.catchup_lag", catchUp.finalHeight - catchUp.startingHeight);
+  }
   const state = await opts.membershipLog.reconcile(opts.now);
   const membership = opts.membershipService.reconcile({
     epoch: state.epoch,

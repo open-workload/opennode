@@ -1,3 +1,4 @@
+import { metricsRegistry } from "@workspace/observability";
 import { ListableChunkStore } from "./store";
 
 export interface ChunkRetentionPolicy {
@@ -23,8 +24,13 @@ export async function pruneExpiredChunks(
   let deleted = 0;
   for (const chunk of await chunkStore.list()) {
     if (now - chunk.metadata.timestamp > ttlMs) {
-      await chunkStore.delete(chunk.address);
-      deleted += 1;
+      try {
+        await chunkStore.delete(chunk.address);
+        deleted += 1;
+      } catch (error) {
+        metricsRegistry.increment("content_store.orphan_cleanup_errors");
+        throw error;
+      }
     }
   }
   return deleted;

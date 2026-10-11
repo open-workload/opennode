@@ -10,9 +10,11 @@
     "./errors": "./src/errors.ts"
   },
   "dependencies": {
+    "@workspace/observability": "workspace:*",
     "@workspace/opennode-domain": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "@workspace/peernet": "workspace:*"
   }
 }

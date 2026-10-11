@@ -4,7 +4,7 @@
  *   (secretRefId, jobId, attemptId, clusterId) ─▶ SecretId + JobScope ─▶ broker.issue
  *                                                               ├─▶ .get ─▶ value
  *                                                               └─▶ .revoke
- *   leaseToken ─▶ JSON.parse ─▶ WorkerIdentity ─────────────────────▶ broker.get
+ *   leaseToken ─▶ JSON.parse ─▶ { WorkerIdentity, capability, signature, issuer } ─▶ broker.get
  *   resolveSecrets ─▶ Promise.all over refs ─▶ ResolvedSecret[]  (bad JSON ─▶ throw)
  *
  *   InMemorySecretStore keys on secretId:jobId:attemptId, swept by an unref'd interval
@@ -22,10 +22,12 @@ import {
   SecretId,
   JobScope,
   WorkerIdentity,
+  LeaseBoundCapability,
   SecretValue,
   createSecretId,
   createJobScope,
   createWorkerIdentity,
+  createLeaseBoundCapability,
 } from "@workspace/secret-broker/secret-broker";
 import { WorkerRuntimeError } from "./errors";
 import { NodeId, ClusterId } from "@workspace/opennode-domain";
@@ -75,8 +77,8 @@ export class SecretBrokerClient {
   async getSecret(secretRefId: string, jobId: string, attemptId: string, clusterId: ClusterId, leaseToken: string): Promise<string> {
     const secretId = createSecretId(secretRefId);
     const jobScope = createJobScope({ jobId, clusterId, attemptId });
-    const workerIdentity = this.parseLeaseToken(leaseToken);
-    const input: GetSecretInput = { secretId, jobScope, workerIdentity };
+    const { workerIdentity, capability, capabilitySignature, issuerNodeId } = this.parseLeaseToken(leaseToken);
+    const input: GetSecretInput = { secretId, jobScope, workerIdentity, capability, capabilitySignature, issuerNodeId };
     const correlation: CorrelationIds = { requestId: `get-${secretRefId}-${attemptId}` };
     const result = await this.broker.get(input, correlation);
     return result.value;
@@ -98,15 +100,43 @@ export class SecretBrokerClient {
     return results;
   }
 
-  private parseLeaseToken(token: string): WorkerIdentity {
+  private parseLeaseToken(token: string): {
+    workerIdentity: WorkerIdentity;
+    capability: LeaseBoundCapability;
+    capabilitySignature: string;
+    issuerNodeId: NodeId;
+  } {
     try {
       const parsed = JSON.parse(token);
-      return createWorkerIdentity({
+      if (
+        typeof parsed.capability !== "object" ||
+        parsed.capability === null ||
+        typeof parsed.capabilitySignature !== "string" ||
+        typeof parsed.issuerNodeId !== "string"
+      ) {
+        throw new Error("Missing capability fields in lease token.");
+      }
+      const workerIdentity = createWorkerIdentity({
         workerNodeId: { schemaVersion: 1, value: parsed.workerNodeId },
         authorizedBy: { schemaVersion: 1, value: parsed.authorizedBy },
         issuedAt: parsed.issuedAt,
         expiresAt: parsed.expiresAt,
       });
+      const capability = createLeaseBoundCapability({
+        runId: parsed.capability.runId,
+        attemptOrdinal: parsed.capability.attemptOrdinal,
+        workerNodeId: { schemaVersion: 1, value: parsed.capability.workerNodeId },
+        membershipEpoch: parsed.capability.membershipEpoch,
+        fencingToken: parsed.capability.fencingToken,
+        issuedAt: parsed.capability.issuedAt,
+        expiresAt: parsed.capability.expiresAt,
+      });
+      return {
+        workerIdentity,
+        capability,
+        capabilitySignature: parsed.capabilitySignature,
+        issuerNodeId: { schemaVersion: 1, value: parsed.issuerNodeId },
+      };
     } catch {
       throw new WorkerRuntimeError("Invalid lease token format", "invalid_lease_token");
     }
@@ -181,7 +211,8 @@ export class ConsoleAuditSink implements AuditSink {
 export function createSecretBrokerForWorker(
   store: SecretStore,
   audit: AuditSink,
+  verifyCapability: (issuer: NodeId, message: string, signature: string) => boolean,
   options?: { defaultTtlMs?: number; maxTtlMs?: number },
 ): SecretBroker {
-  return createSecretBroker({ store, audit, ...options });
+  return createSecretBroker({ store, audit, verifyCapability, ...options });
 }

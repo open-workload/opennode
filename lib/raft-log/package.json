@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@workspace/observability": "workspace:*",
     "@workspace/opennode-domain": "workspace:*",
     "@workspace/sync-engine": "workspace:*"
   },

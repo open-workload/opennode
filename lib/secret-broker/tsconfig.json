@@ -6,8 +6,19 @@
     "emitDeclarationOnly": true,
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src"],
-  "references": [{ "path": "../opennode-domain" }]
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../opennode-domain"
+    },
+    {
+      "path": "../observability"
+    }
+  ]
 }

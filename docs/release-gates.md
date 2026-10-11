@@ -153,6 +153,63 @@ with tests.
 
 ---
 
+## Gate 6: PROV-03 — an unused mechanism is not a control
+
+**Status: VERIFIED** — the guard reports **0 tracked-unwired**; the last two
+mechanisms (`createDefaultHarness`, `registerAllFaultPoints`, OPS-07) are now
+wired into a real production call path and the allowlist is empty.
+
+`pnpm run check:ci` — this session, exit 0, 3/3 guards:
+
+```text
+ok   PROV-03 unused mechanism — 18 required symbols: 0 tracked-unwired, 0 untracked, 0 stale
+ok   RUN-22 bare join in comparison/digest — 0 violation(s), 1 documented exemption(s)
+ok   OPS-20 fault injection pass-through — 10 silently injected type(s), 0 untracked, 0 stale
+```
+
+**Guard:** `scripts/src/ci-checks/unused-symbols.ts` (matcher:
+`unused-symbols.test.ts`), executed by `pnpm run check:ci`.
+
+**Wired this session (commits `53fd21d`, `a96e201`):** 17 of the 19 mechanisms PROV-03
+named — identity (`ensureNodeIdentity`, `assertNoNodeIdCollision`; NET-02/GOV-21), lease
+fencing (`fenceOnMembershipChange`, `compareFencingTokens`, `isFreshFencingToken`,
+`isCommittedLeaseUsable`; RUN-19), chunk deletion (`ChunkStore.delete`; EXEC-17), sync
+catch-up/reconcile (`runCatchUp`, `MembershipService.reconcile`,
+`MembershipLog.reconcilePeer`; SYNC-05/10), single flag authority (CFG-01/OPS-13;
+`setFeatureFlagsInstance` obsoleted, not wired), peer auth + nonce cache
+(`authorizePeerAccess`, `createNonceCache`; NET-01/NET-05), membership controls
+(`isQuarantined`, `issueMembershipCredential`, `LeaseRegistry.get`/`list`;
+RUN-18/RUN-19/NET-06).
+
+**OPS-07 (this session, uncommitted at time of writing):** `createDefaultHarness` and
+`registerAllFaultPoints` are now exported from the `@workspace/failure-injection` barrel
+and called by `artifacts/api-server/src/lib/faultInjection.ts`
+(`bootstrapFaultInjection()` — idempotent, registers all 33 fault points onto a real
+`FailureInjector`, builds the default harness). The injector is threaded into the worker
+execution path: `runtime.ts` wraps `IsolatedProcessBackend` with
+`createFaultInjectingBackend`, so every `WorkerRuntime.submit` → `backend.start` runs
+through `injector.inject("worker-runtime.execute", …)`. Default is pass-through; an
+activated injection genuinely faults execution (proven by
+`faultInjection.test.ts`: rejection, `injectedCount === 1`, backend never reached).
+`KNOWN_UNWIRED_ALLOWLIST` is now empty.
+
+**Tests:** `artifacts/api-server/src/middlewares/peerAuth.test.ts`,
+`artifacts/api-server/src/routes/membership.test.ts`,
+`artifacts/api-server/src/routes/flags.test.ts`,
+`artifacts/api-server/src/lib/faultInjection.test.ts`,
+`lib/run-coordinator/src/coordinator.fencing.test.ts`, `lib/run-coordinator/src/events.test.ts`,
+`lib/opennode-domain/src/identity.test.ts`, `lib/node-store/src/identityKeystore.test.ts`,
+`lib/membership-log/src/sync.test.ts`, `lib/content-store/src/retention.test.ts`.
+**Reproduce:** `pnpm run typecheck` exit 0; `pnpm test` 336 passed / 31 files;
+`pnpm run check:ci` 3/3 ok.
+
+**Closed:** OPS-07 is wired (see above); the guard reports `0 tracked-unwired` and the
+allowlist is empty. Mark this gate VERIFIED at the commit that carries the OPS-07
+changes (`artifacts/api-server/src/lib/faultInjection.ts` + barrel exports + empty
+allowlist).
+
+---
+
 ## Summary
 
 | Gate | Previous claim | Correct status | Blocking requirement |
@@ -162,11 +219,13 @@ with tests.
 | 3. Membership/partition/lease tests | ✅ Verified | **NOT MET** | 254 unit tests pass; distributed tests still missing: GOV-09, RUN-03, CONC-01 |
 | 4. Replit full-node | ⚠️ Conditional | **NOT MET** | No target tests; autoscale incompatible |
 | 5. Operator controls | ✅ Verified | **NOT MET** | OPS-12, RUN-18, GOV-15, DATA-04, DATA-07 |
+| 6. PROV-03 unused-mechanism guard | — | **VERIFIED** | Guard reports `0 tracked-unwired`; OPS-07 wired into worker execution path |
 
 **Gate closure order:** the root test runner and CI checks are now present, but OPS-01
-coverage and OPS-02 release-branch protection are not fully evidenced. Next: PROV-03
-(wire or remove unused mechanisms), real peer/consensus and isolation test suites, then
-metrics emission and operational recovery evidence.
+coverage and OPS-02 release-branch protection are not fully evidenced. **PROV-03 (Gate 6)
+is now VERIFIED** — 0 tracked-unwired, allowlist empty; next: real peer/consensus and
+isolation test suites (Gate 1, Gate 3), then metrics emission and operational recovery
+evidence (Gate 5).
 
 ---
 

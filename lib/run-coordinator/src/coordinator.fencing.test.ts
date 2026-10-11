@@ -39,6 +39,7 @@ const SPEC: RunSpec = {
   name: "smoke",
   mode: "built-in-diagnostic",
   image: null,
+  command: [],
   resources: { cpuMilli: 100, memoryMiB: 128, diskMiB: 64, timeoutSeconds: 60 },
   expectedOutputBytes: 0,
   secretRefs: [],

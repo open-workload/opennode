@@ -8,6 +8,10 @@
  *
  *   Usable = unexpired AND on the current epoch AND not stale. Tokens
  *   order highest-wins with leaseId as tiebreak, so an older token loses.
+ *
+ *   validateLeaseTtlConfig ──▶ { ok: true } | { ok: false, reason }
+ *       startup gate: ttl >= 2x renewal, ttl > observation gap,
+ *       ttl >= max wall-clock + safety margin
  */
 import { RunCoordinatorError } from "./errors";
 
@@ -139,6 +143,47 @@ export function computeLeaseTtl(
 ): number {
   const remaining = runTimeoutMs - elapsedMs;
   return Math.min(MAX_LEASE_TTL_MS, Math.max(0, remaining));
+}
+
+export interface LeaseTtlConfig {
+  readonly ttlMs: number;
+  readonly renewalIntervalMs: number;
+  readonly maxObservationGapMs: number;
+  readonly maxWallClockMs: number;
+  readonly safetyMarginMs: number;
+}
+
+export type LeaseTtlConfigValidation =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string };
+
+/** Startup gate for RUN-03: the configured TTL must leave room for at least
+ *  two renewals, must outlive the widest observation-report gap, and must
+ *  cover the longest workload wall-clock plus a safety margin. Checked rules
+ *  run in order, so the reported reason is the first violated one. */
+export function validateLeaseTtlConfig(
+  config: LeaseTtlConfig,
+): LeaseTtlConfigValidation {
+  if (config.ttlMs < 2 * config.renewalIntervalMs) {
+    return {
+      ok: false,
+      reason: "Lease TTL must be at least 2x the renewal interval.",
+    };
+  }
+  if (config.ttlMs <= config.maxObservationGapMs) {
+    return {
+      ok: false,
+      reason: "Lease TTL must exceed the maximum observation-report gap.",
+    };
+  }
+  if (config.ttlMs < config.maxWallClockMs + config.safetyMarginMs) {
+    return {
+      ok: false,
+      reason:
+        "Lease TTL must cover the maximum workload wall-clock duration plus the safety margin.",
+    };
+  }
+  return { ok: true };
 }
 
 export function validateCommittedLease(lease: CommittedLease): void {

@@ -6,6 +6,11 @@
  *
  *   untrusted value ──▶ assert* ──▶ void, or throw on a malformed shape
  *   identity + now ──▶ isWorkerIdentityValid ──▶ boolean in-window
+ *
+ *   capability ──▶ createLeaseBoundCapability ──▶ frozen LeaseBoundCapability
+ *                      │   (signed over leaseCapabilityMessage's canonical
+ *                      │    pipe-joined string: "capability|runId|...")
+ *   untrusted value ──▶ assertLeaseBoundCapability ──▶ void or throw
  */
 import { NodeId, ClusterId } from "@workspace/opennode-domain";
 
@@ -25,6 +30,17 @@ export interface WorkerIdentity {
   readonly schemaVersion: 1;
   readonly workerNodeId: NodeId;
   readonly authorizedBy: NodeId;
+  readonly issuedAt: number;
+  readonly expiresAt: number;
+}
+
+export interface LeaseBoundCapability {
+  readonly schemaVersion: 1;
+  readonly runId: string;
+  readonly attemptOrdinal: string;
+  readonly workerNodeId: NodeId;
+  readonly membershipEpoch: number;
+  readonly fencingToken: string;
   readonly issuedAt: number;
   readonly expiresAt: number;
 }
@@ -60,6 +76,9 @@ export interface GetSecretInput {
   readonly secretId: SecretId;
   readonly jobScope: JobScope;
   readonly workerIdentity: WorkerIdentity;
+  readonly capability: LeaseBoundCapability;
+  readonly capabilitySignature: string;
+  readonly issuerNodeId: NodeId;
 }
 
 export interface AuditEventDetails {
@@ -125,6 +144,44 @@ export function createSecretRef(input: {
   });
 }
 
+export function createLeaseBoundCapability(input: {
+  readonly runId: string;
+  readonly attemptOrdinal: string;
+  readonly workerNodeId: NodeId;
+  readonly membershipEpoch: number;
+  readonly fencingToken: string;
+  readonly issuedAt: number;
+  readonly expiresAt: number;
+}): LeaseBoundCapability {
+  if (typeof input.runId !== "string" || input.runId.trim().length === 0) {
+    throw new Error("Capability runId must not be empty.");
+  }
+  if (typeof input.attemptOrdinal !== "string" || input.attemptOrdinal.trim().length === 0) {
+    throw new Error("Capability attemptOrdinal must not be empty.");
+  }
+  if (
+    typeof input.workerNodeId !== "object" ||
+    input.workerNodeId === null ||
+    typeof input.workerNodeId.value !== "string" ||
+    input.workerNodeId.value.trim().length === 0
+  ) {
+    throw new Error("Capability workerNodeId must not be empty.");
+  }
+  if (!Number.isSafeInteger(input.membershipEpoch)) {
+    throw new Error("Capability membershipEpoch must be a safe integer.");
+  }
+  if (typeof input.fencingToken !== "string" || input.fencingToken.trim().length === 0) {
+    throw new Error("Capability fencingToken must not be empty.");
+  }
+  if (input.issuedAt >= input.expiresAt) {
+    throw new Error("Capability issuedAt must be before expiresAt.");
+  }
+  return Object.freeze({
+    schemaVersion: 1,
+    ...input,
+  });
+}
+
 export function assertSecretId(value: SecretId): void {
   if (
     typeof value !== "object" ||
@@ -167,9 +224,41 @@ export function assertWorkerIdentity(value: WorkerIdentity): void {
   }
 }
 
+export function assertLeaseBoundCapability(value: LeaseBoundCapability): void {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    value.schemaVersion !== 1 ||
+    typeof value.runId !== "string" ||
+    value.runId.trim().length === 0 ||
+    typeof value.attemptOrdinal !== "string" ||
+    value.attemptOrdinal.trim().length === 0 ||
+    typeof value.workerNodeId !== "object" ||
+    value.workerNodeId === null ||
+    typeof value.workerNodeId.value !== "string" ||
+    value.workerNodeId.value.trim().length === 0 ||
+    !Number.isSafeInteger(value.membershipEpoch) ||
+    typeof value.fencingToken !== "string" ||
+    value.fencingToken.trim().length === 0 ||
+    !Number.isSafeInteger(value.issuedAt) ||
+    !Number.isSafeInteger(value.expiresAt) ||
+    value.issuedAt >= value.expiresAt
+  ) {
+    throw new Error("A valid LeaseBoundCapability is required.");
+  }
+}
+
 export function isWorkerIdentityValid(
   identity: WorkerIdentity,
   now: number,
 ): boolean {
   return now >= identity.issuedAt && now < identity.expiresAt;
+}
+
+export function leaseCapabilityMessage(capability: LeaseBoundCapability): string {
+  return (
+    `capability|${capability.runId}|${capability.attemptOrdinal}|` +
+    `${capability.workerNodeId.value}|${capability.membershipEpoch}|` +
+    `${capability.fencingToken}|${capability.issuedAt}|${capability.expiresAt}`
+  );
 }

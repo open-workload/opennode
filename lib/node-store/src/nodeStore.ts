@@ -117,6 +117,13 @@ export interface NodeStore {
 const TERMINAL_STATUSES = new Set<string>(["succeeded", "failed", "cancelled", "timed_out", "infrastructure_error"]);
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
+export function extractImageDigest(image: string | null): string | null {
+  if (image === null) return null;
+  const match = /@sha256:([a-f0-9]{64})(?![a-f0-9])/.exec(image);
+  if (match === null) return null;
+  return `sha256:${match[1]}`;
+}
+
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export class DrizzleNodeStore implements NodeStore {
@@ -152,7 +159,7 @@ export class DrizzleNodeStore implements NodeStore {
           name: cmd.name,
           mode: cmd.mode,
           image: cmd.image,
-          imageDigest: null,
+          imageDigest: extractImageDigest(cmd.image),
           command: cmd.command,
           status: "queued",
           executionMode: cmd.mode === "diagnostic" ? "built_in_diagnostic" : "isolated_worker",

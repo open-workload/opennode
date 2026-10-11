@@ -7,8 +7,9 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@workspace/opennode-domain": "workspace:*",
-    "@workspace/feature-flags": "workspace:*"
+    "@workspace/feature-flags": "workspace:*",
+    "@workspace/observability": "workspace:*",
+    "@workspace/opennode-domain": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:"

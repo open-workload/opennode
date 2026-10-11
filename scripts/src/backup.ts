@@ -1,18 +1,46 @@
-import { DrizzleNodeStore } from "@workspace/node-store";
+/**
+ * Cluster backup and pre-verified restore.
+ *
+ *   createBackup ──▶ node-store dump + signed sync snapshot ──▶ manifest
+ *
+ *   restoreBackup ──▶ read manifest
+ *        │
+ *        ├─ readiness guard: quiesced, not advertising capacity
+ *        ├─ verifyRestore: signature + cluster id + schema + height/epoch
+ *        │        └─ any mismatch ──▶ abort, node untouched
+ *        ├─ node-store restore (destructive)   ◀── only after the gate
+ *        └─ re-derive local_node_identity locally
+ *
+ *   verifyRestore verifies against injected real cluster key material,
+ *   never a placeholder.
+ */
 import {
-  EventLog,
-  createInMemoryEventLogStore,
+  createClusterSnapshot,
   createHmacSigner,
-  createHmacVerifier,
+  sha256Hex,
+  stableStringify,
+  verifySnapshot,
   type ClusterSnapshot,
-  type Signer,
   type SignatureVerifier,
 } from "@workspace/sync-engine";
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-import { ClusterId, SCHEMA_VERSION } from "@workspace/opennode-domain";
-import { merkleRoot, sha256Hex, stableStringify } from "@workspace/sync-engine/hash";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { createClusterId, type ClusterId } from "@workspace/opennode-domain";
+
+export interface NodeStoreManifest {
+  readonly version: number;
+  readonly createdAt: string;
+  readonly tableCount: number;
+  readonly rowCount: number;
+  readonly checksum: string;
+}
+
+export interface BackupStore {
+  backupToFile(path: string): Promise<NodeStoreManifest>;
+}
+
+export interface RestoreStore {
+  restoreFromFile(path: string): Promise<NodeStoreManifest>;
+}
 
 export interface BackupConfig {
   readonly outputDir: string;
@@ -24,6 +52,17 @@ export interface BackupConfig {
   readonly tipHash: string | null;
   readonly entryHashes: readonly string[];
   readonly approved: boolean;
+  readonly nodeStore?: BackupStore;
+}
+
+export interface RestoreClusterState {
+  readonly height: number;
+  readonly membershipEpoch: number;
+}
+
+export interface RestoreReadiness {
+  readonly quiesced: boolean;
+  readonly advertisingCapacity: boolean;
 }
 
 export interface RestoreConfig {
@@ -31,18 +70,16 @@ export interface RestoreConfig {
   readonly clusterId: string;
   readonly verifier: SignatureVerifier;
   readonly requireApproved?: boolean;
+  readonly nodeStore?: RestoreStore;
+  readonly getCurrentState: () => Promise<RestoreClusterState>;
+  readonly getReadiness: () => Promise<RestoreReadiness>;
+  readonly reDeriveLocalIdentity: () => Promise<void>;
 }
 
 export interface BackupManifest {
   readonly version: number;
   readonly createdAt: string;
-  readonly nodeStoreManifest: {
-    readonly version: number;
-    readonly createdAt: string;
-    readonly tableCount: number;
-    readonly rowCount: number;
-    readonly checksum: string;
-  };
+  readonly nodeStoreManifest: NodeStoreManifest;
   readonly syncSnapshot: ClusterSnapshot;
   readonly combinedChecksum: string;
 }
@@ -59,7 +96,7 @@ export interface RestoreVerification {
   readonly errors: string[];
 }
 
-function computeCombinedChecksum(nodeStoreManifest: BackupManifest["nodeStoreManifest"], syncSnapshot: ClusterSnapshot): string {
+function computeCombinedChecksum(nodeStoreManifest: NodeStoreManifest, syncSnapshot: ClusterSnapshot): string {
   return sha256Hex(
     stableStringify({
       nodeStoreChecksum: nodeStoreManifest.checksum,
@@ -70,6 +107,11 @@ function computeCombinedChecksum(nodeStoreManifest: BackupManifest["nodeStoreMan
   );
 }
 
+async function loadDefaultNodeStore(): Promise<BackupStore & RestoreStore> {
+  const { DrizzleNodeStore } = await import("@workspace/node-store");
+  return new DrizzleNodeStore();
+}
+
 export async function createBackup(config: BackupConfig): Promise<BackupManifest> {
   await mkdir(config.outputDir, { recursive: true });
 
@@ -77,13 +119,13 @@ export async function createBackup(config: BackupConfig): Promise<BackupManifest
   const nodeStoreBackupPath = `${config.outputDir}/node-store-${timestamp}.bak`;
   const syncSnapshotPath = `${config.outputDir}/sync-snapshot-${timestamp}.json`;
 
-  const nodeStore = new DrizzleNodeStore();
+  const nodeStore = config.nodeStore ?? (await loadDefaultNodeStore());
   const nodeStoreManifest = await nodeStore.backupToFile(nodeStoreBackupPath);
 
   const signer = createHmacSigner(config.signerId, config.secretKey);
-  const clusterId = new ClusterId(config.clusterId);
+  const clusterId = createClusterId(config.clusterId);
 
-  const syncSnapshot = createSyncSnapshot({
+  const syncSnapshot = createClusterSnapshot({
     clusterId,
     membershipEpoch: config.membershipEpoch,
     height: config.eventLogHeight,
@@ -109,76 +151,51 @@ export async function createBackup(config: BackupConfig): Promise<BackupManifest
   return manifest;
 }
 
-function createSyncSnapshot(input: {
-  readonly clusterId: ClusterId;
-  readonly membershipEpoch: number;
-  readonly height: number;
-  readonly tipHash: string | null;
-  readonly entryHashes: readonly string[];
-  readonly approved: boolean;
-  readonly signer: Signer;
-}): ClusterSnapshot {
-  if (!Number.isSafeInteger(input.height) || input.height < 0) {
-    throw new Error("Snapshot height must be a non-negative safe integer.");
-  }
-  if (!Number.isSafeInteger(input.membershipEpoch) || input.membershipEpoch < 0) {
-    throw new Error("Snapshot membership epoch must be a non-negative safe integer.");
-  }
-  const entryHashes = input.entryHashes.slice(0, input.height);
-  const root = merkleRoot(entryHashes);
-  const snapshotId = sha256Hex(
-    stableStringify({
-      schemaVersion: SCHEMA_VERSION,
-      clusterId: input.clusterId,
-      membershipEpoch: input.membershipEpoch,
-      height: input.height,
-      tipHash: input.tipHash,
-      merkleRoot: root,
-    })
-  );
-  const payload = stableStringify({
-    schemaVersion: SCHEMA_VERSION,
-    clusterId: input.clusterId,
-    snapshotId,
-    membershipEpoch: input.membershipEpoch,
-    height: input.height,
-    tipHash: input.tipHash,
-    merkleRoot: root,
-    approved: input.approved,
-  });
-  return Object.freeze({
-    schemaVersion: SCHEMA_VERSION,
-    clusterId: input.clusterId,
-    snapshotId,
-    membershipEpoch: input.membershipEpoch,
-    height: input.height,
-    tipHash: input.tipHash,
-    merkleRoot: root,
-    approved: input.approved,
-    signerId: input.signer.signerId,
-    signature: input.signer.sign(payload),
-  });
+function toNodeStoreBackupPath(backupPath: string): string {
+  return backupPath.replace("backup-manifest-", "node-store-").replace(".json", ".bak");
 }
 
 export async function restoreBackup(config: RestoreConfig): Promise<BackupManifest> {
   const raw = await readFile(config.backupPath, "utf8");
   const manifest = JSON.parse(raw) as BackupManifest;
 
-  const nodeStore = new DrizzleNodeStore();
-  await nodeStore.restoreFromFile(config.backupPath.replace("backup-manifest-", "node-store-").replace(".json", ".bak"));
+  await assertRestoreAllowed(config.getReadiness);
 
-  verifySnapshot(manifest.syncSnapshot, {
-    clusterId: new ClusterId(config.clusterId),
+  const verification = await verifyRestore(manifest, config.getCurrentState, {
+    clusterId: createClusterId(config.clusterId),
     verifier: config.verifier,
     requireApproved: config.requireApproved,
   });
+  if (!verification.success) {
+    throw new Error(`Restore aborted before applying backup: ${verification.errors.join("; ")}`);
+  }
+
+  const nodeStore = config.nodeStore ?? (await loadDefaultNodeStore());
+  await nodeStore.restoreFromFile(toNodeStoreBackupPath(config.backupPath));
+
+  await config.reDeriveLocalIdentity();
 
   return manifest;
 }
 
+async function assertRestoreAllowed(getReadiness: () => Promise<RestoreReadiness>): Promise<void> {
+  const readiness = await getReadiness();
+  if (!readiness.quiesced) {
+    throw new Error("Restore refused: node is not quiesced.");
+  }
+  if (readiness.advertisingCapacity) {
+    throw new Error("Restore refused: node is still advertising capacity.");
+  }
+}
+
 export async function verifyRestore(
   manifest: BackupManifest,
-  getCurrentState: () => Promise<{ height: number; membershipEpoch: number }>
+  getCurrentState: () => Promise<RestoreClusterState>,
+  keyMaterial: {
+    readonly clusterId: ClusterId;
+    readonly verifier: SignatureVerifier;
+    readonly requireApproved?: boolean;
+  }
 ): Promise<RestoreVerification> {
   const errors: string[] = [];
   const currentState = await getCurrentState();
@@ -199,12 +216,10 @@ export async function verifyRestore(
 
   let snapshotValid = false;
   try {
-    const { createHmacVerifier } = await import("@workspace/sync-engine");
-    const verifier = createHmacVerifier({ [manifest.syncSnapshot.signerId]: "dummy" });
     verifySnapshot(manifest.syncSnapshot, {
-      clusterId: manifest.syncSnapshot.clusterId,
-      verifier,
-      requireApproved: true,
+      clusterId: keyMaterial.clusterId,
+      verifier: keyMaterial.verifier,
+      requireApproved: keyMaterial.requireApproved,
     });
     snapshotValid = true;
   } catch (err) {
@@ -222,44 +237,6 @@ export async function verifyRestore(
     snapshotValid,
     errors,
   };
-}
-
-function verifySnapshot(
-  snapshot: ClusterSnapshot,
-  opts: {
-    readonly clusterId: ClusterId;
-    readonly verifier: SignatureVerifier;
-    readonly requireApproved?: boolean;
-  }
-): void {
-  if (snapshot.schemaVersion !== SCHEMA_VERSION) {
-    throw new Error("Snapshot schema version is not supported.");
-  }
-  if (snapshot.clusterId.value !== opts.clusterId.value) {
-    throw new Error("Snapshot belongs to a different cluster.");
-  }
-  if (!Number.isSafeInteger(snapshot.height) || snapshot.height < 0) {
-    throw new Error("Snapshot height must be a non-negative safe integer.");
-  }
-  if (!Number.isSafeInteger(snapshot.membershipEpoch) || snapshot.membershipEpoch < 0) {
-    throw new Error("Snapshot membership epoch must be a non-negative safe integer.");
-  }
-  if (opts.requireApproved !== false && snapshot.approved !== true) {
-    throw new Error("Snapshot is not marked approved by consensus.");
-  }
-  const payload = stableStringify({
-    schemaVersion: snapshot.schemaVersion,
-    clusterId: snapshot.clusterId,
-    snapshotId: snapshot.snapshotId,
-    membershipEpoch: snapshot.membershipEpoch,
-    height: snapshot.height,
-    tipHash: snapshot.tipHash,
-    merkleRoot: snapshot.merkleRoot,
-    approved: snapshot.approved,
-  });
-  if (!opts.verifier.verify(snapshot.signerId, payload, snapshot.signature)) {
-    throw new Error("Snapshot signature does not verify.");
-  }
 }
 
 export async function listBackups(backupDir: string): Promise<string[]> {
