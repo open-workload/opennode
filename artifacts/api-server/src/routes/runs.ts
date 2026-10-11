@@ -1,3 +1,15 @@
+/**
+ * Express router for the run API: submit, list, preflight, logs + SSE stream,
+ * artifacts, get, cancel, retry, reconcile.
+ *
+ *   HTTP req ──▶ zod parse ──▶ coordinator / nodeStore ──▶ JSON res
+ *       │            │                    │
+ *    400 invalid  getRunCoordinator()   executionProvider.startRun
+ *                 (submit/cancel/retry)  (fire-and-forget)
+ *
+ * Coordinator faults are mapped to status codes by handleCoordinatorError;
+ * unknown faults become a 500 via handleError.
+ */
 import { Router, type IRouter, type Response, type Request } from "express";
 import {
   CancelRunResponse,
