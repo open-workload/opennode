@@ -1,14 +1,17 @@
 /**
  * Alert rule definitions and the registry that turns a metric value into a notification.
  *
- *   createDefaultAlertRules() ──▶ AlertRule { id, severity, runbookUrl }
+ *   createDefaultAlertRules() ──▶ AlertRule { id, severity, runbookUrl, cooldownMs }
  *        │
- *        ├──▶ condition.metricName ──▶ evaluate(name, value, labels)
- *        │                                │
- *        │             operator/threshold│──▶ match? ──▶ firingAlerts ──▶ handlers
- *        │                                │              │
- *        │                                │              └── no match ──▶ resolved
- *        └──▶ nothing in this repo emits these metric names or calls evaluate()
+ *        └──▶ evaluate(name, value, labels)     clock: () => number (default Date.now)
+ *                 │
+ *                 ├── false ─▶ pendingSince.delete ─▶ resolve firing ─▶ lastResolvedAt ─▶ notify
+ *                 │
+ *                 └── true  ─▶ pending(durationMs) ─▶ firing ─▶ notify ─▶ firingAlerts
+ *                                  │                          ▲
+ *                         held < durationMs             cooldownMs since
+ *                         ─▶ skip (pending)              last resolution ─▶ suppress
+ *        (nothing in this repo emits these metric names or calls evaluate())
  */
 export enum AlertSeverity {
   Info = "info",
@@ -62,8 +65,12 @@ type AlertHandler = (notification: AlertNotification) => void;
 export class AlertRuleRegistry {
   private rules = new Map<string, AlertRule>();
   private firingAlerts = new Map<string, AlertNotification>();
+  private pendingSince = new Map<string, number>();
+  private lastResolvedAt = new Map<string, number>();
   private handlers: AlertHandler[] = [];
   private evaluationIntervals = new Map<string, ReturnType<typeof setInterval>>();
+
+  constructor(private readonly now: () => number = Date.now) {}
 
   register(rule: AlertRule): void {
     if (this.rules.has(rule.id)) {
@@ -110,33 +117,45 @@ export class AlertRuleRegistry {
 
       const matches = this.checkCondition(rule.condition, value);
       const alertKey = `${rule.id}:${JSON.stringify(labels)}`;
+      const now = this.now();
 
       if (matches) {
-        if (!this.firingAlerts.has(alertKey)) {
-          const notification: AlertNotification = {
-            id: `${rule.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            ruleId: rule.id,
-            ruleName: rule.name,
-            severity: rule.severity,
-            message: this.formatMessage(rule, value, labels),
-            context: {
-              rule,
-              metricValue: value,
-              timestamp: Date.now(),
-              labels,
-              correlationIds,
-            },
-            firedAt: Date.now(),
-            status: "firing",
-          };
-          this.firingAlerts.set(alertKey, notification);
-          this.notify(notification);
-        }
+        if (this.firingAlerts.has(alertKey)) continue;
+
+        const durationMs = rule.condition.durationMs ?? 0;
+        const firstSeen = this.pendingSince.get(alertKey) ?? now;
+        this.pendingSince.set(alertKey, firstSeen);
+        if (now - firstSeen < durationMs) continue;
+
+        const cooldownMs = rule.cooldownMs ?? 0;
+        const lastResolved = this.lastResolvedAt.get(alertKey);
+        if (lastResolved !== undefined && now - lastResolved < cooldownMs) continue;
+
+        const notification: AlertNotification = {
+          id: `${rule.id}-${now}-${Math.random().toString(36).slice(2)}`,
+          ruleId: rule.id,
+          ruleName: rule.name,
+          severity: rule.severity,
+          message: this.formatMessage(rule, value, labels),
+          context: {
+            rule,
+            metricValue: value,
+            timestamp: now,
+            labels,
+            correlationIds,
+          },
+          firedAt: now,
+          status: "firing",
+        };
+        this.firingAlerts.set(alertKey, notification);
+        this.notify(notification);
       } else {
+        this.pendingSince.delete(alertKey);
         const existing = this.firingAlerts.get(alertKey);
         if (existing) {
           existing.status = "resolved";
-          existing.resolvedAt = Date.now();
+          existing.resolvedAt = now;
+          this.lastResolvedAt.set(alertKey, now);
           this.notify(existing);
           this.firingAlerts.delete(alertKey);
         }
