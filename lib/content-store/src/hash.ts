@@ -6,9 +6,10 @@
  *   object ──▶ sorted-key JSON ──▶ stableStringify ──▶ canonical text
  *
  * verifyChecksum guards chunk reads: hash again, compare digests.
- * timingSafeEqualHex compares with Array.every, so it is not constant-time.
+ * timingSafeEqualHex compares the two digests with node:crypto
+ * timingSafeEqual, so equal-length comparisons run in constant time.
  */
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 export function sha256Hex(input: Uint8Array | string): string {
   const hash = createHash("sha256");
@@ -43,7 +44,9 @@ function timingSafeEqualHex(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   const ab = Buffer.from(a, "hex");
   const bb = Buffer.from(b, "hex");
-  return ab.length === bb.length && ab.every((byte, i) => byte === bb[i]);
+  const byteLength = a.length / 2;
+  if (ab.length !== byteLength || bb.length !== byteLength) return false;
+  return timingSafeEqual(ab, bb);
 }
 
 export function stableStringify(value: unknown): string {
