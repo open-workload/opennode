@@ -2,16 +2,19 @@
 /**
  * Commander CLI over the OpenNode HTTP API. Holds a bearer token in
  * ~/.opennode/credentials.json (dir 0700, file 0600) and prints text output.
+ * lib/cliClient resolves the base URL and the Bearer header lazily at request
+ * time, so both the JSON and SSE paths share one source of truth.
  *
- *   argv ─▶ program.parseAsync ─▶ subcommand ─▶ apiRequest(path) ─▶ API_BASE + path
- *     │                                       │
- *     │                        Authorization: Bearer <token>, only while unexpired
- *     │                                       │
- *     │                        !res.ok ─▶ throw Error(body.error) ─▶ exit 1
+ *   argv ─▶ program.parseAsync ─▶ subcommand ─▶ apiRequest(path)
+ *     │                                            │
+ *     │   resolveApiBaseUrl(flag | env | creds.apiUrl) ─▶ base URL
+ *     │   buildAuthHeaders(creds) ─▶ Bearer <token>, unexpired only
+ *     │                                            │
+ *     │                       !res.ok ─▶ throw Error(body.error) ─▶ exit 1
  *     │
  *     login ─▶ write token, 24h TTL      logout ─▶ delete the credentials file
  *     status / preflight / submit / list / show / cancel / retry / peer-status
- *     logs --follow ─▶ raw fetch to the SSE stream, decoding `data:` lines
+ *     logs --follow ─▶ authedFetch to the SSE stream, decoding `data:` lines
  */
 
 import { program } from "commander";
@@ -20,17 +23,19 @@ import { dirname, join } from "node:path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
+import {
+  authedFetch,
+  resolveApiBaseUrl,
+  type CliCredentials,
+} from "../src/lib/cliClient";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const CONFIG_DIR = join(homedir(), ".opennode");
 const CREDENTIALS_FILE = join(CONFIG_DIR, "credentials.json");
-const API_BASE = process.env.OPENNODE_API_URL ?? "http://localhost:3000";
 
-interface StoredCredentials {
-  token: string;
-  expiresAt: number;
+interface StoredCredentials extends CliCredentials {
   apiUrl: string;
 }
 
@@ -61,21 +66,17 @@ function clearCredentials(): void {
   }
 }
 
-function isTokenValid(creds: StoredCredentials | null): boolean {
-  return !!creds && creds.expiresAt > Date.now();
-}
-
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const creds = loadCredentials();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-    ...(options.headers as Record<string, string>),
-  };
-  if (creds && isTokenValid(creds)) {
-    headers.Authorization = `Bearer ${creds.token}`;
-  }
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const base = resolveApiBaseUrl({ envUrl: process.env.OPENNODE_API_URL, creds });
+  const res = await authedFetch(`${base}${path}`, creds, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(options.headers as Record<string, string>),
+    },
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error ?? `HTTP ${res.status}: ${res.statusText}`);
@@ -87,7 +88,7 @@ program
   .name("opennode")
   .description("OpenNode CLI - manage runs, peers, and cluster state")
   .version("0.1.0")
-  .option("--api-url <url>", "API base URL", API_BASE)
+  .option("--api-url <url>", "API base URL")
   .hook("preAction", (thisCmd) => {
     const opts = thisCmd.opts();
     if (opts.apiUrl) {
@@ -106,7 +107,11 @@ program
       process.exit(1);
     }
     const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
-    saveCredentials({ token, expiresAt, apiUrl: API_BASE });
+    saveCredentials({
+      token,
+      expiresAt,
+      apiUrl: resolveApiBaseUrl({ envUrl: process.env.OPENNODE_API_URL }),
+    });
     console.log("Logged in successfully. Token stored in OS credential store.");
   });
 
@@ -290,7 +295,9 @@ program
     try {
       if (opts.follow) {
         console.log(`Following logs for ${runId}... (Ctrl+C to stop)`);
-        const res = await fetch(`${API_BASE}/api/runs/logs/stream?runId=${encodeURIComponent(runId)}&follow=true&limit=${opts.limit}${opts.cursor ? `&cursor=${opts.cursor}` : ""}`, {
+        const creds = loadCredentials();
+        const base = resolveApiBaseUrl({ envUrl: process.env.OPENNODE_API_URL, creds });
+        const res = await authedFetch(`${base}/api/runs/logs/stream?runId=${encodeURIComponent(runId)}&follow=true&limit=${opts.limit}${opts.cursor ? `&cursor=${opts.cursor}` : ""}`, creds, {
           headers: { Accept: "text/event-stream" },
         });
         for await (const chunk of res.body?.getReader().stream() ?? []) {
