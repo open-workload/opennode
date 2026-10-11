@@ -1527,6 +1527,12 @@ without a `typecheck` script is silently skipped.*
 registered fault-point name appears in the source tree, failing CI when one is orphaned. Any
 subsystem with no fault points MUST be declared out of scope with written justification.
 
+**OPS-21 — Interrupted opencode sessions MUST be resumable to completion.** A supervisor script
+MUST enumerate every opencode session with incomplete todos, resume each non-interactively until
+its todos are completed or attempts are exhausted, run periodically without duplicate supervisors
+or overlapping resumes in the same working directory, and record structured logs plus liveness
+evidence that a human can inspect.
+
 ---
 
 ## Deferred unless required for MVP

@@ -5,22 +5,26 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "resume-sessions": "tsx ./src/opencode-session-resume.ts",
     "check:ci": "tsx ./src/ci-checks/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "replit-feasibility": "tsx ./src/replit-feasibility.ts",
     "rootless:install": "tsx ./src/rootless/install.ts"
   },
   "dependencies": {
-    "@workspace/opennode-domain": "workspace:*",
-    "@workspace/sync-engine": "workspace:*",
-    "@workspace/membership-log": "workspace:*",
     "@workspace/feature-flags": "workspace:*",
+    "@workspace/membership-log": "workspace:*",
     "@workspace/node-lifecycle": "workspace:*",
     "@workspace/node-store": "workspace:*",
-    "@workspace/peernet": "workspace:*"
+    "@workspace/observability": "workspace:*",
+    "@workspace/opennode-domain": "workspace:*",
+    "@workspace/peernet": "workspace:*",
+    "@workspace/sync-engine": "workspace:*",
+    "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/proper-lockfile": "^4.1.4",
     "tsx": "catalog:"
   }
 }
