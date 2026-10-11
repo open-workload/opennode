@@ -6,7 +6,8 @@
  *            kept in metadata                  stored by address in the store
  *
  * unchunk reverses the cipher, rehashes the plaintext and throws CHECKSUM_MISMATCH
- * if the digest differs; verifyRef only compares a stored checksum string.
+ * if the digest differs. verifyRef re-derives the address from the stored
+ * ciphertext and rejects a missing or non-matching expected address.
  */
 import { Encryptor, EncryptedData } from "./encryption";
 import { contentAddress, verifyChecksum, sha256Hex } from "./hash";
@@ -111,11 +112,11 @@ export function createChunker(opts: ChunkerOptions) {
       });
     },
 
-    verifyRef(ref: ChunkRef, expectedChecksum?: string): boolean {
-      if (expectedChecksum && ref.metadata.checksum !== expectedChecksum) {
+    verifyRef(stored: StoredChunk, expectedAddress: string): boolean {
+      if (!expectedAddress) {
         return false;
       }
-      return true;
+      return verifyChecksum(stored.encryptedData.ciphertext, expectedAddress);
     },
   };
 }

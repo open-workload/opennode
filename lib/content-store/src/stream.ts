@@ -156,7 +156,7 @@ export async function* readStream(opts: StreamReaderOptions): AsyncGenerator<Uin
     if (!stored) {
       throw new ContentStoreError("INVALID_CHUNK_ADDRESS", `Chunk not found: ${ref.address}`);
     }
-    if (!chunker.verifyRef(stored, ref.metadata.checksum)) {
+    if (!chunker.verifyRef(stored, ref.address)) {
       throw new ContentStoreError("CHECKSUM_MISMATCH", `Checksum mismatch for chunk ${ref.address}`);
     }
     const payload = await chunker.unchunk(stored);
