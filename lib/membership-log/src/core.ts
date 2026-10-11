@@ -9,6 +9,7 @@
  *        │                      ├──▶ epoch must advance by one; save to store
  *        │                      └──▶ epoch change ──▶ leases.fenceOnEpochChange
  *        └──▶ reconcilePeer(claim) ──▶ consistent | advanced | behind | diverged
+ *   issueMembershipCredential ──▶ CA-signed certificate for a committed epoch
  *   createWithRaft wires a RaftEventLogStore in as the ConsensusLog
  */
 import {
@@ -502,7 +503,6 @@ export class MembershipLog {
       issuedAt: input.now,
       ttlMs: input.ttlMs,
       caPrivateKey: new TextEncoder().encode(input.secretKey),
-      caPublicKey: new TextEncoder().encode(input.secretKey), // In real impl, derive from secretKey
     });
   }
 

@@ -1,7 +1,7 @@
 /**
  * X.509-style cluster membership: frozen epochs, CA-signed certs, CRL, access gate.
  *
- *   clusterId + nodeId ──▶ issueMembershipCertificate ──▶ ed25519 ──▶ certificate
+ *   clusterId + nodeId + caPrivateKey ──▶ getPublicKey ──▶ issueMembershipCertificate ──▶ certificate
  *   revoked serials ─────▶ createCRL ───────────────────▶ ed25519 ──▶ CRL
  *
  *   cert ──▶ verifyMembershipCertificate ──▶ cluster, member, epoch, validity
@@ -120,7 +120,6 @@ export function issueMembershipCertificate(input: {
   readonly issuedAt: number;
   readonly ttlMs: number;
   readonly caPrivateKey: Uint8Array;
-  readonly caPublicKey: Uint8Array;
 }): MembershipCertificate {
   assertClusterId(input.clusterId);
   assertNodeId(input.nodeId);
@@ -139,7 +138,7 @@ export function issueMembershipCertificate(input: {
       "Certificate TTL must be positive.",
     );
   }
-  const caFingerprint = caFingerprintFromPublicKey(input.caPublicKey);
+  const caFingerprint = caFingerprintFromPublicKey(getPublicKey(input.caPrivateKey));
   const serialNumber = generateSerialNumber();
   const base = {
     clusterId: input.clusterId,
