@@ -1,6 +1,7 @@
 export {
   FailureInjector,
   FaultType,
+  globalFailureInjector,
   type FaultConfig,
   type FaultInjection,
   type FaultPointRegistration,

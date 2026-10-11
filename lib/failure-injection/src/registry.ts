@@ -1,25 +1,25 @@
 /**
  * Catalogue of fault points per subsystem, plus a module-level registry.
  *
- *   9 subsystem arrays ──▶ registerFaultPoints ──▶ Map ──▶ query / clear
- *                          duplicate name throws
+ *   9 subsystem arrays ──▶ registerFaultPoints ──▶ Map + globalFailureInjector
+ *                          duplicate name throws     (kept in sync)
  *
- *   registerAllFaultPoints ──▶ spreads all nine into the same Map.
- *   Each entry lists the FaultTypes it claims to support. The injector
- *   built inside registerFaultPoints is discarded; only the Map is kept.
+ *   registerAllFaultPoints ──▶ spreads all nine through the same path.
+ *   Each entry lists the FaultTypes it claims to support. The Map answers
+ *   catalogue queries; the global injector is what inject() reaches, so
+ *   clearFaultPoints drops from both.
  */
-import { FailureInjector, FaultPointRegistration, FaultType } from "./injector";
+import { FaultPointRegistration, FaultType, globalFailureInjector } from "./injector";
 
 const faultPointRegistry = new Map<string, FaultPointRegistration>();
 
 export function registerFaultPoints(points: FaultPointRegistration[]): void {
-  const injector = new FailureInjector();
   for (const point of points) {
     if (faultPointRegistry.has(point.name)) {
       throw new Error(`Fault point ${point.name} already registered`);
     }
     faultPointRegistry.set(point.name, point);
-    injector.registerFaultPoint(point);
+    globalFailureInjector.registerFaultPoint(point);
   }
 }
 
@@ -32,6 +32,9 @@ export function getRegisteredFaultPointsBySubsystem(subsystem: string): FaultPoi
 }
 
 export function clearFaultPoints(): void {
+  for (const name of faultPointRegistry.keys()) {
+    globalFailureInjector.unregisterFaultPoint(name);
+  }
   faultPointRegistry.clear();
 }
 
