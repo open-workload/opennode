@@ -44,7 +44,6 @@ function makeCertificate(overrides?: {
   issuedAt?: number;
   ttlMs?: number;
   caPrivateKey?: Uint8Array;
-  caPublicKey?: Uint8Array;
 }): MembershipCertificate {
   return issueMembershipCertificate({
     clusterId,
@@ -53,7 +52,6 @@ function makeCertificate(overrides?: {
     issuedAt: overrides?.issuedAt ?? NOW - 1_000,
     ttlMs: overrides?.ttlMs ?? TTL_MS,
     caPrivateKey: overrides?.caPrivateKey ?? caKey.privateKey,
-    caPublicKey: overrides?.caPublicKey ?? caKey.publicKey,
   });
 }
 
@@ -106,7 +104,6 @@ describe("membership - authorizePeerAccess and validation", () => {
   it("rejects certificate signed by unknown CA", () => {
     const cert = makeCertificate({
       caPrivateKey: otherCaKey.privateKey,
-      caPublicKey: otherCaKey.publicKey,
     });
     const decision = authorizePeerAccess(cert, frozen, caKey.publicKey, null, {
       now: NOW,

@@ -43,7 +43,6 @@ function makeCertificate(overrides?: { issuedAt?: number; ttlMs?: number }): Mem
     issuedAt: overrides?.issuedAt ?? NOW - 1_000,
     ttlMs: overrides?.ttlMs ?? 60_000,
     caPrivateKey: caKey.privateKey,
-    caPublicKey: caKey.publicKey,
   });
 }
 
