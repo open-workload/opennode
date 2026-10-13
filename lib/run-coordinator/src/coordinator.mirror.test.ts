@@ -88,7 +88,21 @@ async function createHarness() {
   });
   const submitRun = vi.fn();
   submitRun.mockResolvedValue({ run: { id: "db-run-1" }, created: true });
-  const nodeStore = { submitRun } as unknown as NodeStore;
+  const createAttempt = vi.fn();
+  createAttempt.mockResolvedValue({ id: "db-attempt-1" });
+  const transitionAttempt = vi.fn();
+  transitionAttempt.mockResolvedValue({ id: "db-attempt-1" });
+  const markRunTerminal = vi.fn();
+  markRunTerminal.mockResolvedValue({ id: "db-run-1" });
+  const setRunRunning = vi.fn();
+  setRunRunning.mockResolvedValue({ id: "db-run-1" });
+  const nodeStore = {
+    submitRun,
+    createAttempt,
+    transitionAttempt,
+    markRunTerminal,
+    setRunRunning,
+  } as unknown as NodeStore;
   const coordinator = new RunCoordinator({
     clusterId,
     eventLog,
@@ -96,10 +110,17 @@ async function createHarness() {
     membershipLog,
     store: createInMemoryRunLedgerStore(),
     quotas: QUOTAS,
-    capabilities: [{ nodeId: localNodeId, capabilities: ["diagnostic"] }],
+    capabilities: [{ nodeId: localNodeId, capabilities: ["diagnostic", "container"] }],
     nodeStore,
   });
-  return { coordinator, submitRun };
+  return {
+    coordinator,
+    submitRun,
+    createAttempt,
+    transitionAttempt,
+    markRunTerminal,
+    setRunRunning,
+  };
 }
 
 describe("RunCoordinator node store mirror", () => {
@@ -137,5 +158,58 @@ describe("RunCoordinator node store mirror", () => {
     await coordinator.submit(input);
 
     expect(submitRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("mirrors attempt rows and the run row status from committed observations", async () => {
+    const { coordinator, createAttempt, transitionAttempt, markRunTerminal, setRunRunning } =
+      await createHarness();
+
+    const { run } = await coordinator.submit({
+      clientKey: "client-1",
+      actorId: "actor-1",
+      spec: SPEC,
+      correlationId: "req-submit",
+      now: 1_000,
+    });
+    const lease = await coordinator.acquireLease({
+      runId: run.runId,
+      correlationId: "req-lease",
+      now: 1_000,
+    });
+
+    await coordinator.observeAttempt({
+      report: {
+        runId: run.runId,
+        attempt: lease.attempt,
+        workerNodeId: lease.workerNodeId,
+        status: "running",
+        reportedAt: 1_500,
+        fencingToken: lease.fencingToken,
+      },
+      correlationId: "req-obs-running",
+      now: 1_500,
+    });
+
+    expect(createAttempt).toHaveBeenCalledWith("db-run-1", {
+      status: "running",
+      workerNodeId: lease.workerNodeId,
+    });
+    expect(setRunRunning).toHaveBeenCalledWith("db-run-1", lease.workerNodeId);
+
+    await coordinator.observeAttempt({
+      report: {
+        runId: run.runId,
+        attempt: lease.attempt,
+        workerNodeId: lease.workerNodeId,
+        status: "succeeded",
+        reportedAt: 2_000,
+        fencingToken: lease.fencingToken,
+      },
+      correlationId: "req-obs-succeeded",
+      now: 2_000,
+    });
+
+    expect(transitionAttempt).toHaveBeenCalledWith("db-attempt-1", "succeeded");
+    expect(markRunTerminal).toHaveBeenCalledWith("db-run-1", "succeeded", null);
   });
 });

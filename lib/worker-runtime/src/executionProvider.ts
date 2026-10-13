@@ -1,19 +1,22 @@
 /**
- * Adapts a persisted WorkloadRun to the worker runtime's WorkerSpec contract.
+ * Adapts a persisted WorkloadRun to the worker runtime's WorkerSpec contract,
+ * and reports one attempt's lifecycle out through the AttemptLifecycle port.
  *
  *   WorkloadRun ──▶ workerSpecFromRun ──▶ WorkerSpec (pinned image + limits)
  *                        │ unpinned image
- *                        └──▶ WorkerSpecError
+ *                        └──▶ WorkerSpecError (thrown before submit; availability untouched)
  *
- *   WorkerExecutionProvider.startRun ──▶ runtime.submit ──▶ provider.availability = 1
- *                    │ runtime rejects
- *                    └────────────────────────────────▶ provider.availability = 0
+ *   startRun ─▶ runtime.submit ─▶ availability=1 ─▶ observe(running) ─▶ waitForCompletion ─▶ observe(terminal)
+ *        │ submit rejects                 │ renewEveryMs ▶ renewLease (while active)
+ *        └▶ availability=0                finally: clearInterval
+ *          + observe(infrastructure_error) unless duplicate_run
+ *
  *   cancelRun ──▶ runtime.cancel("cancelled")
  */
 import type { WorkloadRun } from "@workspace/db";
 import type { ExecutionProvider } from "@workspace/node-store";
 import { metricsRegistry } from "@workspace/observability";
-import { WorkerSpecError } from "./errors";
+import { WorkerRuntimeError, WorkerSpecError } from "./errors";
 import { WorkerRuntime } from "./runtime";
 import type { ImagePin, WorkerSpec } from "./spec";
 
@@ -61,10 +64,37 @@ export function workerSpecFromRun(run: WorkloadRun): WorkerSpec {
   };
 }
 
+export type AttemptObservationStatus =
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "timed_out"
+  | "infrastructure_error";
+
+export interface AttemptLifecycle {
+  /** Cadence at which the provider must renew the committed lease while a run is active. */
+  readonly renewEveryMs: number;
+  observe(input: {
+    readonly runId: string;
+    readonly status: AttemptObservationStatus;
+    readonly note?: string;
+    readonly requestId?: string;
+  }): Promise<void>;
+  renewLease(runId: string, opts?: { readonly requestId?: string }): Promise<void>;
+}
+
+function noteFromError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class WorkerExecutionProvider implements ExecutionProvider {
   readonly executionMode = "isolated_worker" as const;
 
-  constructor(private readonly runtime: WorkerRuntime) {}
+  constructor(
+    private readonly runtime: WorkerRuntime,
+    private readonly lifecycle: AttemptLifecycle,
+  ) {}
 
   async startRun(run: WorkloadRun, opts: { requestId?: string }): Promise<void> {
     const spec = workerSpecFromRun(run);
@@ -73,7 +103,35 @@ export class WorkerExecutionProvider implements ExecutionProvider {
       metricsRegistry.set("provider.availability", 1);
     } catch (error) {
       metricsRegistry.set("provider.availability", 0);
+      if (!(error instanceof WorkerRuntimeError && error.code === "duplicate_run")) {
+        await this.lifecycle
+          .observe({ runId: run.id, status: "infrastructure_error", note: noteFromError(error), requestId: opts?.requestId })
+          .catch(() => undefined);
+      }
       throw error;
+    }
+
+    const timer = setInterval(() => {
+      void this.lifecycle.renewLease(run.id, opts).catch(() => undefined);
+    }, this.lifecycle.renewEveryMs);
+    timer.unref?.();
+
+    try {
+      await this.lifecycle.observe({ runId: run.id, status: "running", requestId: opts?.requestId }).catch(() => undefined);
+      const result = await this.runtime.waitForCompletion(run.id);
+      await this.lifecycle.observe({
+        runId: run.id,
+        status: result.status,
+        note: result.error ?? `exit=${result.exitCode} outputBytes=${result.outputBytes}`,
+        requestId: opts?.requestId,
+      });
+    } catch (error) {
+      await this.lifecycle
+        .observe({ runId: run.id, status: "infrastructure_error", note: noteFromError(error), requestId: opts?.requestId })
+        .catch(() => undefined);
+      throw error;
+    } finally {
+      clearInterval(timer);
     }
   }
 

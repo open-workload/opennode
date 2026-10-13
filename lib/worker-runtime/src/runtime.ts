@@ -9,6 +9,11 @@
  *   active run: setTimeout(wallClockMs) ─▶ cancel(timeout); evict/outage ─▶ cancel
  *   handle.wait ─▶ teardown ─▶ nft.remove + cgroup.cleanup + handle.cleanup ─▶ WorkerResult
  *
+ *   waitForCompletion(runId) ─▶ last attempt has result ─▶ resolve now
+ *              │ not active and no history ──▶ reject WorkerRuntimeError
+ *              └▶ register waiter ─▶ watch records result ─▶ resolve
+ *                                   watch throws ──────────▶ reject
+ *
  * The wall-clock cap is a plain setTimeout; the injected `now` is never read.
  */
 
@@ -78,6 +83,7 @@ export interface WorkerRuntimeOptions {
 export class WorkerRuntime {
   private readonly active = new Map<string, ActiveRun>();
   private readonly history = new Map<string, AttemptRecord[]>();
+  private readonly waiters = new Map<string, { resolve: (result: WorkerResult) => void; reject: (error: unknown) => void }[]>();
 
   constructor(
     private readonly backend: WorkerBackend,
@@ -171,13 +177,26 @@ export class WorkerRuntime {
         networkRulesApplied,
       });
 
-      void this.watch(spec.runId, run).catch(() => undefined);
+      void this.watch(spec.runId, run).catch((error: unknown) => this.rejectWaiters(spec.runId, error));
       return this.historyFor(spec.runId).at(-1)!;
     } catch (error) {
       if (nftablesManager) await nftablesManager.remove().catch(() => undefined);
       if (cgroupHandle) await cgroupHandle.cleanup().catch(() => undefined);
       throw error;
     }
+  }
+
+  async waitForCompletion(runId: string): Promise<WorkerResult> {
+    const last = this.history.get(runId)?.at(-1);
+    if (last?.result !== undefined) return last.result;
+    if (!this.active.has(runId) && !this.history.has(runId)) {
+      throw new WorkerRuntimeError(`run ${runId} is not active and has no attempt history`, "run_not_found");
+    }
+    return new Promise<WorkerResult>((resolve, reject) => {
+      const list = this.waiters.get(runId) ?? [];
+      list.push({ resolve, reject });
+      this.waiters.set(runId, list);
+    });
   }
 
   async cancel(runId: string, reason: TeardownReason = "cancelled"): Promise<void> {
@@ -213,11 +232,13 @@ export class WorkerRuntime {
       await this.teardown(runId, run, reason);
       this.emit({ type: "finished", runId, result });
       this.recordHistory(runId, { ...this.historyFor(runId).at(-1)!, teardownReason: reason, result });
+      this.resolveWaiters(runId, result);
       return;
     }
     this.emit({ type: "finished", runId, result });
     const last = this.historyFor(runId).at(-1)!;
     this.recordHistory(runId, { ...last, teardownReason: run.reason ?? "failure", result });
+    this.resolveWaiters(runId, result);
   }
 
   private async teardown(runId: string, run: ActiveRun, reason: TeardownReason): Promise<void> {
@@ -247,6 +268,20 @@ export class WorkerRuntime {
       list.push(record);
     }
     this.history.set(runId, list);
+  }
+
+  private resolveWaiters(runId: string, result: WorkerResult): void {
+    const waiters = this.waiters.get(runId);
+    if (!waiters) return;
+    this.waiters.delete(runId);
+    for (const waiter of waiters) waiter.resolve(result);
+  }
+
+  private rejectWaiters(runId: string, error: unknown): void {
+    const waiters = this.waiters.get(runId);
+    if (!waiters) return;
+    this.waiters.delete(runId);
+    for (const waiter of waiters) waiter.reject(error);
   }
 
   private emit(event: WorkerEvent): void {

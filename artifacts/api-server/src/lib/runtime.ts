@@ -58,6 +58,7 @@ import { FeatureFlags } from "@workspace/feature-flags";
 import { logger } from "./logger";
 import { createFaultInjectingBackend } from "./faultInjection";
 import { resolveExecutionBackend } from "./executionBackend";
+import { createAttemptLifecycle } from "./attemptLifecycle";
 
 export const nodeStore = new DrizzleNodeStore();
 
@@ -91,7 +92,7 @@ const workerRuntime = new WorkerRuntime(createFaultInjectingBackend(workerBacken
   },
 });
 
-export const executionProvider = new WorkerExecutionProvider(workerRuntime);
+export const executionProvider = new WorkerExecutionProvider(workerRuntime, createAttemptLifecycle(() => getRunCoordinator()));
 
 const secretStore = new MemorySecretStore();
 export const secretBroker = createSecretBroker(secretStore);

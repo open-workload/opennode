@@ -10,6 +10,9 @@
  *        │
  *        └──▶ metricsRegistry: duplicate_submissions, queue_age_ms, lease_ttl_ms
  *
+ *   mirrorNodeStore (best effort): submit ─▶ submitRun, cancel ─▶ requestCancel,
+ *     observe ─▶ createAttempt / transitionAttempt + run status (running / terminal)
+ *
  *   applyFromLog replays the committed event log; the log is authoritative.
  */
 import { metricsRegistry } from "@workspace/observability";
@@ -1179,9 +1182,25 @@ export class RunCoordinator {
             });
           }
         }
+        if (run.dbRunId !== undefined) {
+          await this.syncMirroredRunStatus(run, attempt);
+        }
       }
     } catch {
       // NodeStore mirror is a best-effort local view; the committed log is authoritative.
+    }
+  }
+
+  private async syncMirroredRunStatus(run: RunRecord, attempt: AttemptRecord): Promise<void> {
+    const store = this.nodeStore;
+    if (store === undefined || run.dbRunId === undefined) return;
+    if (isTerminalRunState(run.state)) {
+      const { status, failureReason } = mapMirroredRunTerminal(run);
+      await store.markRunTerminal(run.dbRunId, status, failureReason);
+      return;
+    }
+    if (run.state === "running" && attempt.workerNodeId !== null) {
+      await store.setRunRunning(run.dbRunId, attempt.workerNodeId);
     }
   }
 
@@ -1603,6 +1622,15 @@ function mapAttemptStatus(
     case "lost":
       return "infrastructure_error";
   }
+}
+
+function mapMirroredRunTerminal(run: RunRecord): { status: "succeeded" | "failed" | "cancelled" | "timed_out" | "infrastructure_error"; failureReason: string | null } {
+  if (run.state === "succeeded") return { status: "succeeded", failureReason: null };
+  if (run.state === "cancelled") return { status: "cancelled", failureReason: null };
+  const reason = run.terminalReason;
+  if (reason === "timed_out") return { status: "timed_out", failureReason: reason };
+  if (reason === "infrastructure_error") return { status: "infrastructure_error", failureReason: reason };
+  return { status: "failed", failureReason: reason ?? run.state };
 }
 
 interface RunSubmittedPayloadLike {

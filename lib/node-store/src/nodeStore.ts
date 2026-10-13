@@ -10,6 +10,10 @@
  *      │         │          │
  *      └─────────┴──────────┴──▶ cancel_requested ─▶ cancelled
  *
+ * attemptCount numbering is owned solely by createAttempt
+ * (reads run.attemptCount + 1, writes it absolutely); setRunRunning
+ * only sets status + workerNodeId and never bumps attemptCount.
+ *
  * Each mutation is one tx and appends a checksummed audit row; run logs form a
  * per-run sequence hash chain checked by verifyRunLogIntegrity.
  */
@@ -311,7 +315,7 @@ export class DrizzleNodeStore implements NodeStore {
       await lockRun(tx, runId);
       const [updated] = await tx
         .update(workloadRunsTable)
-        .set({ status: "running", workerNodeId, attemptCount: sql`${workloadRunsTable.attemptCount} + 1` })
+        .set({ status: "running", workerNodeId })
         .where(eq(workloadRunsTable.id, runId))
         .returning();
       await insertAudit(tx, { action: "run.running", runId, requestId: requestId ?? "", detail: { workerNodeId } });
