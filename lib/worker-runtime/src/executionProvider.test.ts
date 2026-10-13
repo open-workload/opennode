@@ -5,15 +5,28 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { WorkloadRun } from "@workspace/db";
 import { metricsRegistry } from "@workspace/observability";
-import { WorkerSpecError } from "./errors";
+import type { WorkerResult } from "./backend";
+import { WorkerRuntimeError, WorkerSpecError } from "./errors";
 import { IsolatedProcessBackend } from "./isolatedProcess";
-import { WorkerExecutionProvider, workerSpecFromRun } from "./executionProvider";
+import { WorkerExecutionProvider, workerSpecFromRun, type AttemptLifecycle } from "./executionProvider";
 import { RootlessBackend } from "./rootlessBackend";
 import { WorkerRuntime } from "./runtime";
 import { validateWorkerSpec } from "./spec";
 
 const BUSYBOX_DIGEST = "6e123e7f3202a8c1e9b1f94d8941580a25135382b99e8d3e34fb858bba311348";
 const PINNED = "a".repeat(64);
+
+function makeLifecycle(renewEveryMs = 60_000) {
+  return {
+    renewEveryMs,
+    observe: vi.fn<AttemptLifecycle["observe"]>().mockResolvedValue(undefined),
+    renewLease: vi.fn<AttemptLifecycle["renewLease"]>().mockResolvedValue(undefined),
+  };
+}
+
+function makeResult(overrides: Partial<WorkerResult> = {}): WorkerResult {
+  return { runId: "run-1", backendRunId: "backend-1", status: "succeeded", exitCode: 0, outputBytes: 42, ...overrides };
+}
 
 function makeRun(overrides: Partial<WorkloadRun> = {}): WorkloadRun {
   return {
@@ -66,7 +79,7 @@ describe("workerSpecFromRun", () => {
 
 describe("WorkerExecutionProvider", () => {
   it("reports isolated_worker as the execution mode", () => {
-    const provider = new WorkerExecutionProvider(new WorkerRuntime(new IsolatedProcessBackend()));
+    const provider = new WorkerExecutionProvider(new WorkerRuntime(new IsolatedProcessBackend()), makeLifecycle());
     expect(provider.executionMode).toBe("isolated_worker");
   });
 });
@@ -84,7 +97,10 @@ describe("WorkerExecutionProvider OPS-03 metric producers", () => {
 
   it("sets provider.availability to 1 when the provider starts a run", async () => {
     const submit = vi.fn().mockResolvedValue(undefined);
-    const provider = new WorkerExecutionProvider({ submit } as unknown as WorkerRuntime);
+    const provider = new WorkerExecutionProvider(
+      { submit, waitForCompletion: vi.fn().mockResolvedValue(makeResult()) } as unknown as WorkerRuntime,
+      makeLifecycle(),
+    );
 
     await provider.startRun(run);
 
@@ -93,7 +109,10 @@ describe("WorkerExecutionProvider OPS-03 metric producers", () => {
 
   it("sets provider.availability to 0 when the runtime rejects the run", async () => {
     const submit = vi.fn().mockRejectedValue(new Error("backend down"));
-    const provider = new WorkerExecutionProvider({ submit } as unknown as WorkerRuntime);
+    const provider = new WorkerExecutionProvider(
+      { submit, waitForCompletion: vi.fn() } as unknown as WorkerRuntime,
+      makeLifecycle(),
+    );
 
     await expect(provider.startRun(run)).rejects.toThrow("backend down");
     expect(metricValue("provider.availability")).toBe(0);
@@ -101,7 +120,10 @@ describe("WorkerExecutionProvider OPS-03 metric producers", () => {
 
   it("does not mark the provider unavailable when only the run spec is invalid", async () => {
     const submit = vi.fn().mockResolvedValue(undefined);
-    const provider = new WorkerExecutionProvider({ submit } as unknown as WorkerRuntime);
+    const provider = new WorkerExecutionProvider(
+      { submit, waitForCompletion: vi.fn().mockResolvedValue(makeResult()) } as unknown as WorkerRuntime,
+      makeLifecycle(),
+    );
 
     await provider.startRun(run);
     expect(metricValue("provider.availability")).toBe(1);
@@ -109,6 +131,106 @@ describe("WorkerExecutionProvider OPS-03 metric producers", () => {
     await expect(provider.startRun(makeRun({ image: "alpine:3.19" }))).rejects.toThrow(WorkerSpecError);
     expect(metricValue("provider.availability")).toBe(1);
     expect(submit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("WorkerExecutionProvider attempt lifecycle", () => {
+  const run = makeRun({ image: `alpine:3.19@sha256:${PINNED}` });
+
+  it("observes running then the terminal status in order", async () => {
+    const lifecycle = makeLifecycle();
+    const provider = new WorkerExecutionProvider(
+      { submit: vi.fn().mockResolvedValue(undefined), waitForCompletion: vi.fn().mockResolvedValue(makeResult()) } as unknown as WorkerRuntime,
+      lifecycle,
+    );
+
+    await provider.startRun(run, { requestId: "req-1" });
+
+    expect(lifecycle.observe.mock.calls).toEqual([
+      [{ runId: run.id, status: "running", requestId: "req-1" }],
+      [{ runId: run.id, status: "succeeded", note: "exit=0 outputBytes=42", requestId: "req-1" }],
+    ]);
+  });
+
+  it("prefers the result error over the exit summary as the terminal note", async () => {
+    const lifecycle = makeLifecycle();
+    const provider = new WorkerExecutionProvider(
+      {
+        submit: vi.fn().mockResolvedValue(undefined),
+        waitForCompletion: vi.fn().mockResolvedValue(makeResult({ status: "failed", exitCode: 2, error: "segfault" })),
+      } as unknown as WorkerRuntime,
+      lifecycle,
+    );
+
+    await provider.startRun(run, { requestId: "req-1" });
+
+    expect(lifecycle.observe).toHaveBeenLastCalledWith({
+      runId: run.id,
+      status: "failed",
+      note: "segfault",
+      requestId: "req-1",
+    });
+  });
+
+  it("renews the lease on the lifecycle cadence while the run is active, then stops", async () => {
+    const lifecycle = makeLifecycle(5);
+    let release!: (result: WorkerResult) => void;
+    const waitForCompletion = vi.fn().mockReturnValue(
+      new Promise<WorkerResult>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const provider = new WorkerExecutionProvider(
+      { submit: vi.fn().mockResolvedValue(undefined), waitForCompletion } as unknown as WorkerRuntime,
+      lifecycle,
+    );
+
+    const started = provider.startRun(run, { requestId: "req-1" });
+    await vi.waitFor(() => expect(waitForCompletion).toHaveBeenCalled());
+    await new Promise((resolveWait) => setTimeout(resolveWait, 40));
+
+    expect(lifecycle.renewLease.mock.calls.length).toBeGreaterThan(0);
+    expect(lifecycle.renewLease).toHaveBeenCalledWith(run.id, { requestId: "req-1" });
+
+    release(makeResult());
+    await started;
+
+    const callsAtCompletion = lifecycle.renewLease.mock.calls.length;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+    expect(lifecycle.renewLease.mock.calls.length).toBe(callsAtCompletion);
+  });
+
+  it("observes infrastructure_error when the runtime rejects the run", async () => {
+    const lifecycle = makeLifecycle();
+    const provider = new WorkerExecutionProvider(
+      { submit: vi.fn().mockRejectedValue(new Error("backend down")), waitForCompletion: vi.fn() } as unknown as WorkerRuntime,
+      lifecycle,
+    );
+
+    await expect(provider.startRun(run, { requestId: "req-1" })).rejects.toThrow("backend down");
+
+    expect(lifecycle.observe).toHaveBeenCalledExactlyOnceWith({
+      runId: run.id,
+      status: "infrastructure_error",
+      note: "backend down",
+      requestId: "req-1",
+    });
+    expect(lifecycle.renewLease).not.toHaveBeenCalled();
+  });
+
+  it("does not observe infrastructure_error for a duplicate_run error", async () => {
+    const lifecycle = makeLifecycle();
+    const provider = new WorkerExecutionProvider(
+      {
+        submit: vi.fn().mockRejectedValue(new WorkerRuntimeError(`run ${run.id} is already active`, "duplicate_run")),
+        waitForCompletion: vi.fn(),
+      } as unknown as WorkerRuntime,
+      lifecycle,
+    );
+
+    await expect(provider.startRun(run, { requestId: "req-1" })).rejects.toThrow("already active");
+
+    expect(lifecycle.observe).not.toHaveBeenCalled();
   });
 });
 
